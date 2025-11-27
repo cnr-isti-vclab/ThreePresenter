@@ -57,43 +57,7 @@
               </button>
             </div>
             <div class="code-block">
-              <pre id="code1"><code>&lt;!DOCTYPE html&gt;
-&lt;html lang="en"&gt;
-&lt;head&gt;
-  &lt;meta charset="UTF-8"&gt;
-  &lt;title&gt;Example 1 - Minimal Setup&lt;/title&gt;
-  &lt;style&gt;
-    body { margin: 0; }
-    #viewer { width: 100vw; height: 100vh; }
-  &lt;/style&gt;
-&lt;/head&gt;
-&lt;body&gt;
-  &lt;div id="viewer"&gt;&lt;/div&gt;
-
-  &lt;script type="importmap"&gt;
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
-      }
-    }
-  &lt;/script&gt;
-
-  &lt;script type="module"&gt;
-    import { ThreePresenter } from './dist/three-presenter.js';
-
-    const viewer = new ThreePresenter('viewer');
-    
-    viewer.loadScene({
-      models: [{
-        id: 'venus',
-        file: 'venus.glb',
-        rotation: [-90, 0, 0]
-      }]
-    });
-  &lt;/script&gt;
-&lt;/body&gt;
-&lt;/html&gt;</code></pre>
+              <pre id="code1"><code>Loading example code...</code></pre>
             </div>
           </div>
           
@@ -149,7 +113,7 @@
     function copyCode(elementId) {
       const code = document.getElementById(elementId).textContent;
       navigator.clipboard.writeText(code).then(() => {
-        const btn = event.target.closest('.copy-btn');
+        const btn = event.target.closest('.btn');
         const originalText = btn.innerHTML;
         btn.innerHTML = '<i class="bi bi-check"></i> Copied!';
         setTimeout(() => {
@@ -157,6 +121,23 @@
         }, 2000);
       });
     }
+
+    // Load example code from file
+    async function loadExampleCode() {
+      try {
+        const response = await fetch('example1-minimal.html');
+        const code = await response.text();
+        const codeElement = document.querySelector('#code1 code');
+        // Escape HTML for display
+        codeElement.textContent = code;
+      } catch (error) {
+        console.error('Failed to load example code:', error);
+        document.querySelector('#code1 code').textContent = 'Failed to load example code.';
+      }
+    }
+
+    // Load code when page loads
+    document.addEventListener('DOMContentLoaded', loadExampleCode);
   </script>
 </body>
 </html>
