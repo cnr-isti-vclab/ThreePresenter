@@ -6,14 +6,24 @@
 
 // Export main ThreePresenter class
 export { ThreePresenter } from './ThreePresenter';
-export type { SceneDescription, ModelDefinition, PresenterState, LoadingProgress } from './ThreePresenter';
+export type { 
+  SceneDescription, 
+  ModelDefinition, 
+  PresenterState, 
+  LoadingProgress
+} from './ThreePresenter';
+
+// Export scene type definitions
+export type {
+  EnvironmentSettings,
+  Annotation,
+  AnnotationType,
+  AnnotationGeometry
+} from './types/SceneTypes';
 
 // Export annotation system
 export { AnnotationManager } from './managers/AnnotationManager';
 export type {
-  Annotation,
-  AnnotationType,
-  AnnotationGeometry,
   AnnotationConfig,
   SelectionChangeCallback,
   PointPickedCallback

@@ -511,8 +511,56 @@ export class ThreePresenter {
 
   /**
    * Load a new scene description
-   * @param sceneDesc Scene description
+   * @param sceneDesc Scene description object defining models, environment, and settings
    * @param preserveCamera If true, keeps current camera position instead of reframing
+   * 
+   * @example
+   * Load a simple scene with one model:
+   * ```typescript
+   * await presenter.loadScene({
+   *   models: [{
+   *     id: 'venus',
+   *     file: 'venus.glb',
+   *     rotation: [-90, 0, 0]
+   *   }]
+   * });
+   * ```
+   * 
+   * @example
+   * Load a complex scene with multiple models and environment settings:
+   * ```typescript
+   * await presenter.loadScene({
+   *   rotationUnits: 'deg',
+   *   models: [
+   *     {
+   *       id: 'building',
+   *       file: 'building.glb',
+   *       title: 'Main Building',
+   *       position: [0, 0, 0],
+   *       rotation: [0, 45, 0],
+   *       scale: 1.5
+   *     },
+   *     {
+   *       id: 'terrain',
+   *       file: 'terrain.ply',
+   *       position: [0, -5, 0]
+   *     }
+   *   ],
+   *   environment: {
+   *     showGround: true,
+   *     background: '#87CEEB',
+   *     headLightOffset: [15, 30]
+   *   },
+   *   annotations: [
+   *     {
+   *       id: 'entrance',
+   *       label: 'Main Entrance',
+   *       type: 'point',
+   *       geometry: [10, 2, 5]
+   *     }
+   *   ]
+   * });
+   * ```
    */
   async loadScene(sceneDesc: SceneDescription, preserveCamera: boolean = false): Promise<void> {
     try {

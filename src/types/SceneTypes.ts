@@ -84,6 +84,73 @@ export interface EnvironmentSettings {
 /**
  * Complete scene description - what models exist and their properties
  * Stored as scene.json alongside the model files
+ * 
+ * @example
+ * Basic scene with a single model:
+ * ```json
+ * {
+ *   "models": [
+ *     {
+ *       "id": "statue",
+ *       "file": "venus.glb",
+ *       "title": "Venus de Milo",
+ *       "rotation": [-90, 0, 0]
+ *     }
+ *   ]
+ * }
+ * ```
+ * 
+ * @example
+ * Complete scene with multiple models, environment, and annotations:
+ * ```json
+ * {
+ *   "projectId": "my-project",
+ *   "rotationUnits": "deg",
+ *   "models": [
+ *     {
+ *       "id": "main-model",
+ *       "file": "building.glb",
+ *       "title": "Main Building",
+ *       "position": [0, 0, 0],
+ *       "rotation": [0, 45, 0],
+ *       "scale": 1.5,
+ *       "visible": true,
+ *       "material": {
+ *         "color": "#ffffff",
+ *         "metalness": 0.2,
+ *         "roughness": 0.8
+ *       }
+ *     },
+ *     {
+ *       "id": "context",
+ *       "file": "terrain.ply",
+ *       "title": "Terrain",
+ *       "position": [0, -5, 0],
+ *       "visible": true
+ *     }
+ *   ],
+ *   "environment": {
+ *     "showGround": true,
+ *     "background": "#87CEEB",
+ *     "headLightOffset": [15, 30]
+ *   },
+ *   "enableControls": true,
+ *   "annotations": [
+ *     {
+ *       "id": "entrance",
+ *       "label": "Main Entrance",
+ *       "type": "point",
+ *       "geometry": [10, 2, 5]
+ *     },
+ *     {
+ *       "id": "path",
+ *       "label": "Walking Path",
+ *       "type": "line",
+ *       "geometry": [[0, 0, 0], [10, 0, 5], [20, 0, 10]]
+ *     }
+ *   ]
+ * }
+ * ```
  */
 export interface SceneDescription {
   /** Project ID for resolving file URLs */
