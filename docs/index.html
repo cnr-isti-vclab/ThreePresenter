@@ -3,199 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ThreePresenter - 3D Viewer Library</title>
+  <title>ThreePresenter - Interactive 3D Model Viewer</title>
   
   <!-- Bootstrap CSS and Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
   
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body { 
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-    }
-    
-    .header {
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 2rem 0;
-      text-align: center;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .header h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-    }
-    
-    .header p {
-      font-size: 1.2rem;
-      opacity: 0.9;
-      margin-bottom: 1rem;
-    }
-    
-    .header .badges {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
-    
-    .badge-item {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 0.5rem 1rem;
-      border-radius: 20px;
-      font-size: 0.9rem;
-    }
-    
-    .viewer-container {
-      margin: 2rem auto;
-      max-width: 1200px;
-      background: white;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    }
-    
-    #viewer {
-      width: 100%;
-      height: 600px;
-      background: #2c2c2c;
-      position: relative;
-    }
-    
-    .loading-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(44, 44, 44, 0.9);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      transition: opacity 0.3s;
-    }
-    
-    .loading-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-    
-    .spinner {
-      width: 50px;
-      height: 50px;
-      border: 4px solid rgba(102, 126, 234, 0.3);
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    .loading-text {
-      color: white;
-      margin-top: 1rem;
-      font-size: 1rem;
-    }
-    
-    .controls-info {
-      padding: 1.5rem;
-      background: #f8f9fa;
-      border-top: 2px solid #e9ecef;
-    }
-    
-    .controls-info h3 {
-      font-size: 1.2rem;
-      margin-bottom: 1rem;
-      color: #333;
-    }
-    
-    .controls-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1rem;
-    }
-    
-    .control-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    
-    .control-item i {
-      color: #667eea;
-      font-size: 1.2rem;
-    }
-    
-    .footer {
-      text-align: center;
-      padding: 3rem 1rem;
-      color: white;
-    }
-    
-    .footer a {
-      color: white;
-      text-decoration: underline;
-    }
-    
-    .github-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.2);
-      padding: 0.75rem 1.5rem;
-      border-radius: 8px;
-      color: white;
-      text-decoration: none;
-      transition: background 0.3s;
-    }
-    
-    .github-link:hover {
-      background: rgba(255, 255, 255, 0.3);
-      color: white;
-    }
-    
-    .features {
-      max-width: 1200px;
-      margin: 2rem auto;
-      padding: 0 1rem;
-    }
-    
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-    }
-    
-    .feature-card {
-      background: rgba(255, 255, 255, 0.95);
-      padding: 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    
-    .feature-card h4 {
-      color: #667eea;
-      margin-bottom: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    
-    .feature-card p {
-      color: #555;
-      line-height: 1.6;
-    }
-  </style>
+  <!-- Custom Styles -->
+  <link href="styles.css" rel="stylesheet">
 </head>
 <body>
   <!-- Header -->
@@ -205,17 +20,17 @@
   </div>
 
   <!-- Features -->
-  <div class="features">
-    <div class="features-grid">
-      <div class="feature-card">
+  <div class="container">
+    <div class="grid grid-3">
+      <div class="card">
         <h4><i class="bi bi-lightning-charge-fill"></i> Zero Configuration</h4>
-        <p>Just include the script and load 3D models. Works out of the box with sensible defaults.</p>
+        <p>Just include the script and start loading 3D models. Works out of the box with sensible defaults.</p>
       </div>
-      <div class="feature-card">
+      <div class="card">
         <h4><i class="bi bi-box-seam"></i> Multi-Format Support</h4>
         <p>Load GLB, GLTF, PLY, OBJ, and Nexus multiresolution models seamlessly.</p>
       </div>
-      <div class="feature-card">
+      <div class="card">
         <h4><i class="bi bi-pin-map-fill"></i> Annotations</h4>
         <p>Add point, line, and area annotations with interactive selection and picking.</p>
       </div>
@@ -223,30 +38,32 @@
   </div>
 
   <!-- 3D Viewer -->
-  <div class="viewer-container">
-    <div id="viewer">
-      <div id="loading" class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text">Loading 3D model...</div>
+  <div class="container">
+    <div class="viewer-container">
+      <div id="viewer" class="viewer">
+        <div id="loading" class="loading-overlay">
+          <div class="spinner"></div>
+          <div class="loading-text">Loading 3D model...</div>
+        </div>
       </div>
-    </div>
-    <div class="controls-info">
-      <div class="controls-grid">
-        <div class="control-item">
-          <i class="bi bi-mouse"></i>
-          <span><strong>Left Drag:</strong> Rotate camera</span>
-        </div>
-        <div class="control-item">
-          <i class="bi bi-mouse2"></i>
-          <span><strong>Right Drag:</strong> Pan view</span>
-        </div>
-        <div class="control-item">
-          <i class="bi bi-mouse3"></i>
-          <span><strong>Scroll:</strong> Zoom in/out</span>
-        </div>
-        <div class="control-item">
-          <i class="bi bi-cursor-fill"></i>
-          <span><strong>Double Click:</strong> Recenter view</span>
+      <div class="controls-info">
+        <div class="controls-grid">
+          <div class="control-item">
+            <i class="bi bi-mouse"></i>
+            <span><strong>Left Drag:</strong> Rotate camera</span>
+          </div>
+          <div class="control-item">
+            <i class="bi bi-mouse2"></i>
+            <span><strong>Right Drag:</strong> Pan view</span>
+          </div>
+          <div class="control-item">
+            <i class="bi bi-mouse3"></i>
+            <span><strong>Scroll:</strong> Zoom in/out</span>
+          </div>
+          <div class="control-item">
+            <i class="bi bi-cursor-fill"></i>
+            <span><strong>Double Click:</strong> Recenter view</span>
+          </div>
         </div>
       </div>
     </div>
@@ -254,17 +71,21 @@
 
   <!-- Footer -->
   <div class="footer">
-    <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1rem;">
-      <a href="https://github.com/cnr-isti-vclab/ThreePresenter" class="github-link">
+    <div class="footer-links">
+      <a href="https://github.com/cnr-isti-vclab/ThreePresenter" class="btn">
         <i class="bi bi-github"></i>
         View on GitHub
       </a>
-      <a href="./api/index.html" class="github-link">
+      <a href="./examples.html" class="btn">
+        <i class="bi bi-code-square"></i>
+        Examples
+      </a>
+      <a href="./api/index.html" class="btn">
         <i class="bi bi-file-text"></i>
         API Documentation
       </a>
     </div>
-    <p style="margin-top: 1rem; opacity: 0.8;">
+    <p class="mt-1 opacity-80">
       Developed by <a href="https://vcg.isti.cnr.it">CNR-ISTI Visual Computing Lab</a>
     </p>
   </div>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Example 1 - Minimal Setup</title>
+  <style>
+    body { margin: 0; }
+    #viewer { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { ThreePresenter } from './dist/three-presenter.js';
+
+    const viewer = new ThreePresenter('viewer');
+    
+    viewer.loadScene({
+      models: [{
+        id: 'venus',
+        file: 'venus.glb',
+        rotation: [-90, 0, 0]
+      }]
+    });
+  </script>
+</body>
+</html>
