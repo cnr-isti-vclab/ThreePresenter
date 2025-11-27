@@ -1,0 +1,17 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "name": "ThreePresenter API Documentation",
+  "includeVersion": true,
+  "excludePrivate": false,
+  "excludeInternal": true,
+  "readme": "none",
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  },
+  "categorizeByGroup": true,
+  "groupOrder": ["Classes", "Interfaces", "Types", "*"],
+  "sort": ["source-order"],
+  "plugin": []
+}

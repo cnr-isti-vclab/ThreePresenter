@@ -19,6 +19,7 @@
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
     "build:demo": "npm run build && cp -r dist/* docs/dist/",
+    "build:all": "npm run build && npm run docs && cp -r dist/* docs/dist/",
     "dev": "vite",
     "preview": "vite preview",
     "serve:demo": "serve docs",
@@ -36,13 +37,13 @@
     "nexus"
   ],
   "author": "CNR-ISTI Visual Computing Lab",
-  "license": "MIT",
   "peerDependencies": {
     "three": "^0.180.0"
   },
   "devDependencies": {
     "@types/three": "^0.180.0",
     "serve": "^14.2.5",
+    "typedoc": "^0.28.14",
     "typescript": "^5.9.2",
     "vite": "^6.0.0"
   }

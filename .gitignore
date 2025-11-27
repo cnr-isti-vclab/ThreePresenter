@@ -8,8 +8,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Keep docs/dist for GitHub Pages deployment
+# Keep docs/dist and docs/api for GitHub Pages deployment
 !docs/dist/
+!docs/api/
 
 # Editor
 .vscode/
