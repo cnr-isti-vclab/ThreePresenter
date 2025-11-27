@@ -9,9 +9,8 @@ npm install
 npm run build
 ```
 
-This creates three key files in `dist/`:
-- **`three-presenter.es.js`** - ES module for modern bundlers (Vite, Webpack, etc.)
-- **`three-presenter.umd.js`** - UMD bundle for direct browser usage
+This creates the build files in `dist/`:
+- **`three-presenter.js`** - ES module for modern bundlers and browsers
 - **`index.d.ts`** - TypeScript type definitions
 
 ## Deployment Options
@@ -41,12 +40,22 @@ import { ThreePresenter } from 'three-presenter';
 
 After publishing to npm, users can load directly from CDN:
 
-**ES Module:**
 ```html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+
 <script type="module">
-  import { ThreePresenter } from 'https://cdn.jsdelivr.net/npm/three-presenter/dist/three-presenter.es.js';
+  import { ThreePresenter } from 'https://cdn.jsdelivr.net/npm/three-presenter/dist/three-presenter.js';
   // or
-  import { ThreePresenter } from 'https://unpkg.com/three-presenter/dist/three-presenter.es.js';
+  import { ThreePresenter } from 'https://unpkg.com/three-presenter/dist/three-presenter.js';
+  
+  const viewer = new ThreePresenter('viewer');
 </script>
 ```
 

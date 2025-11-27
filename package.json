@@ -2,14 +2,14 @@
   "name": "three-presenter",
   "version": "0.1.0",
   "description": "Framework-agnostic 3D viewer library built on Three.js",
-  "main": "./dist/three-presenter.umd.js",
-  "module": "./dist/three-presenter.es.js",
+  "type": "module",
+  "main": "./dist/three-presenter.js",
+  "module": "./dist/three-presenter.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/three-presenter.es.js",
-      "require": "./dist/three-presenter.umd.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/three-presenter.js"
     }
   },
   "files": [
@@ -17,8 +17,10 @@
   ],
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
+    "build:demo": "npm run build && cp -r dist/* docs/dist/",
     "dev": "vite",
     "preview": "vite preview",
+    "serve:demo": "serve docs",
     "docs": "typedoc"
   },
   "keywords": [
@@ -39,6 +41,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.180.0",
+    "serve": "^14.2.5",
     "typescript": "^5.9.2",
     "vite": "^6.0.0"
   }

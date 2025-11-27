@@ -5,16 +5,17 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'ThreePresenter',
-      formats: ['es', 'umd'],
-      fileName: (format) => `three-presenter.${format}.js`
+      formats: ['es'],
+      fileName: () => `three-presenter.js`
     },
     rollupOptions: {
       // Externalize three.js - users must include it separately
-      external: ['three'],
+      // This keeps the bundle small and avoids version conflicts
+      external: ['three', /^three\//],
       output: {
-        globals: {
-          three: 'THREE'
+        // Preserve the 'three' import in the output
+        paths: {
+          three: 'three'
         }
       }
     },

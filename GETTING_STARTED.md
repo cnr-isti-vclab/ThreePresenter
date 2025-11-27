@@ -9,7 +9,7 @@ If you just want to add a 3D viewer to your website:
 ### 1. Download the files
 
 After someone builds the library, you'll get a `dist/` folder. Copy these files to your project:
-- `three-presenter.umd.js` (the library)
+- `three-presenter.js` (the ES module library)
 - `index.d.ts` (optional, for TypeScript)
 
 ### 2. Create your HTML file
@@ -31,15 +31,22 @@ After someone builds the library, you'll get a `dist/` folder. Copy these files 
 <body>
   <div id="viewer"></div>
 
-  <!-- Load Three.js first -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.min.js"></script>
+  <!-- Import maps for Three.js -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
   
-  <!-- Load ThreePresenter -->
-  <script src="three-presenter.umd.js"></script>
+  <!-- Load ThreePresenter as ES module -->
+  <script type="module">
+    import { ThreePresenter } from './three-presenter.js';
 
-  <script>
     // Create viewer
-    const viewer = new ThreePresenter.ThreePresenter('viewer');
+    const viewer = new ThreePresenter('viewer');
 
     // Load your 3D model
     viewer.loadScene({

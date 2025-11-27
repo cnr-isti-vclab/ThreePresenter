@@ -255,7 +255,7 @@ export class ModelLoader {
   ): Promise<THREE.Mesh> {
     // Lazy load PLYLoader
     if (!this.plyLoader) {
-      const { PLYLoader } = await import('three/examples/jsm/loaders/PLYLoader');
+      const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
       this.plyLoader = new PLYLoader();
     }
 
@@ -297,8 +297,8 @@ export class ModelLoader {
     // Lazy load GLTF and Draco loaders
     if (!this.gltfLoader) {
       const [{ GLTFLoader }, { DRACOLoader }] = await Promise.all([
-        import('three/examples/jsm/loaders/GLTFLoader'),
-        import('three/examples/jsm/loaders/DRACOLoader')
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/loaders/DRACOLoader.js')
       ]);
 
       this.gltfLoader = new GLTFLoader();

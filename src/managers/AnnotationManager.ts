@@ -31,7 +31,7 @@ import type {
   AnnotationConfig,
   SelectionChangeCallback,
   PointPickedCallback
-} from './types/AnnotationTypes';
+} from '../types/AnnotationTypes';
 
 /**
  * Default configuration for annotation rendering

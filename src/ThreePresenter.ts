@@ -673,7 +673,7 @@ export class ThreePresenter {
   private async setupControls(): Promise<void> {
     if (this.controls) return; // Already setup
     
-    const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
@@ -1250,7 +1250,7 @@ export class ThreePresenter {
     try {
       // Dynamically import EXRLoader
       // @ts-ignore - example loaders may not have types in the project
-      const { EXRLoader } = await import('three/examples/jsm/loaders/EXRLoader');
+      const { EXRLoader } = await import('three/addons/loaders/EXRLoader.js');
       const exrLoader = new EXRLoader();
       // Load from public folder
       exrLoader.load(
