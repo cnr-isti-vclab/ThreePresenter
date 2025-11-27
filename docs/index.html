@@ -65,6 +65,46 @@
       width: 100%;
       height: 600px;
       background: #2c2c2c;
+      position: relative;
+    }
+    
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(44, 44, 44, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      transition: opacity 0.3s;
+    }
+    
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(102, 126, 234, 0.3);
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      color: white;
+      margin-top: 1rem;
+      font-size: 1rem;
     }
     
     .controls-info {
@@ -184,7 +224,12 @@
 
   <!-- 3D Viewer -->
   <div class="viewer-container">
-    <div id="viewer"></div>
+    <div id="viewer">
+      <div id="loading" class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading 3D model...</div>
+      </div>
+    </div>
     <div class="controls-info">
       <div class="controls-grid">
         <div class="control-item">
@@ -254,6 +299,11 @@
       .then(() => {
         console.log('Scene loaded successfully!');
         
+        // Hide loading indicator
+        const loading = document.getElementById('loading');
+        loading.classList.add('hidden');
+        setTimeout(() => loading.remove(), 300);
+        
         // Show control buttons
         presenter.setButtonVisible('home', true);
         presenter.setButtonVisible('light', true);
@@ -262,6 +312,11 @@
       })
       .catch((error) => {
         console.error('Error loading scene:', error);
+        
+        // Hide loading and show error
+        const loading = document.getElementById('loading');
+        loading.innerHTML = '<div class="loading-text" style="color: #ff6b6b;">Failed to load model</div>';
+        setTimeout(() => loading.classList.add('hidden'), 2000);
       });
   </script>
 </body>
