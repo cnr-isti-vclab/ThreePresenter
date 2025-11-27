@@ -22,7 +22,7 @@
     "build:all": "npm run build && npm run docs && cp -r dist/* docs/dist/",
     "dev": "vite",
     "preview": "vite preview",
-    "serve:demo": "serve docs",
+    "serve:demo": "serve docs --trailing-slash",
     "docs": "typedoc"
   },
   "keywords": [

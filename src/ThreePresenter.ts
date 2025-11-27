@@ -52,7 +52,8 @@ export interface LoadingProgress {
  * presenter.setModelVisibility('model_id', false);
  * ```
  * 
- * @see {@link /doc/SCENE_JSON_FORMAT.md} for scene.json format documentation
+ * @see {@link https://cnr-isti-vclab.github.io/ThreePresenter/ | ThreePresenter Homepage}
+ * @see {@link https://github.com/cnr-isti-vclab/ThreePresenter | GitHub Repository}
  */
 export class ThreePresenter {
   renderer: THREE.WebGLRenderer;
