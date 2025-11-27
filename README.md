@@ -39,11 +39,59 @@ ThreePresenter is an independent, reusable 3D visualization library that provide
 
 ## Installation
 
+### For Development (Bundler Projects)
+
 Currently bundled with OCRA. Future: available on npm.
 
 ```bash
-npm install three-presenter
+npm install three-presenter three
 ```
+
+### For Browsers (No Build Tools)
+
+After building, you can use the library directly in HTML:
+
+**ES Modules (Modern):**
+```html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+  import { ThreePresenter } from './dist/three-presenter.es.js';
+  const viewer = new ThreePresenter('viewer');
+</script>
+```
+
+**UMD Bundle (Classic):**
+```html
+<script src="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.min.js"></script>
+<script src="./dist/three-presenter.umd.js"></script>
+
+<script>
+  const { ThreePresenter } = window.ThreePresenter;
+  const viewer = new ThreePresenter('viewer');
+</script>
+```
+
+## Building the Library
+
+```bash
+# Install dependencies
+npm install
+
+# Build for production
+npm run build
+```
+
+This creates:
+- `dist/three-presenter.es.js` - ES module for bundlers
+- `dist/three-presenter.umd.js` - UMD bundle for browsers
+- `dist/index.d.ts` - TypeScript type definitions
 
 ## Quick Start
 
@@ -120,9 +168,21 @@ See [API Documentation](../../docs/api/) for complete reference.
 ## Examples
 
 See the `examples/` directory for standalone demos:
-- `basic.html` - Minimal setup
-- `advanced.html` - Full features
-- `custom-resolver.html` - Custom URL resolution
+- `standalone.html` - ES module bundle (recommended) ⭐
+- `umd.html` - UMD bundle (maximum compatibility)
+- `basic.html` - Development mode with TypeScript source
+
+To run examples:
+```bash
+# Build first
+npm run build
+
+# Then serve
+npx serve
+
+# Or for development
+npm run dev
+```
 
 ## Architecture
 
@@ -145,16 +205,29 @@ src/
 
 ## Development
 
-### Building
-
+### Setup
 ```bash
-npm run build
+npm install
 ```
 
-### Testing
-
+### Building
 ```bash
-npm test
+# Build ES and UMD bundles + type definitions
+npm run build
+
+# Watch mode (rebuilds on changes)
+npm run dev
+```
+
+### Running Examples
+```bash
+# Development mode (with hot reload)
+npm run dev
+# Open http://localhost:5173/examples/basic.html
+
+# Or with standalone examples (after build)
+npx serve
+# Open http://localhost:3000/examples/standalone.html
 ```
 
 ## License
