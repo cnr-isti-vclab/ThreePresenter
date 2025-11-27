@@ -59,12 +59,6 @@ After publishing to npm, users can load directly from CDN:
 </script>
 ```
 
-**UMD:**
-```html
-<script src="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three-presenter/dist/three-presenter.umd.js"></script>
-```
-
 ### Option 3: Local Files (Simple Projects)
 
 For users who want to download and use locally:
@@ -77,11 +71,8 @@ For users who want to download and use locally:
    ```html
    <!-- ES Module -->
    <script type="module">
-     import { ThreePresenter } from './path/to/three-presenter.es.js';
+     import { ThreePresenter } from './path/to/three-presenter.js';
    </script>
-   
-   <!-- OR UMD -->
-   <script src="./path/to/three-presenter.umd.js"></script>
    ```
 
 ### Option 4: Direct Distribution
@@ -105,15 +96,6 @@ Users can:
 Users should install via npm and import:
 ```javascript
 import { ThreePresenter } from 'three-presenter';
-```
-
-### Vanilla JavaScript (No Bundler)
-Use the UMD bundle:
-```html
-<script src="three-presenter.umd.js"></script>
-<script>
-  const viewer = new ThreePresenter.ThreePresenter('viewer');
-</script>
 ```
 
 ### Modern JavaScript (ES Modules)

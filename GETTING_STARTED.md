@@ -121,7 +121,6 @@ Once loaded:
 ## Need Help?
 
 Check the `examples/` folder for working demos:
-- `umd.html` - Simplest example (like above)
 - `standalone.html` - Modern ES modules
 - `basic.html` - Development mode
 

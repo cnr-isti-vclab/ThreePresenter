@@ -110,8 +110,7 @@ docs/
 ├── index.html          # Your demo page (customize this!)
 ├── .nojekyll          # Tells GitHub to serve as-is
 ├── dist/              # Built library (auto-generated)
-│   ├── three-presenter.umd.js
-│   ├── three-presenter.es.js
+│   ├── three-presenter.js
 │   └── index.d.ts
 └── assets/            # Your 3D models (add files here)
     └── venus.glb

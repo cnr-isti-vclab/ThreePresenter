@@ -62,18 +62,7 @@ After building, you can use the library directly in HTML:
 </script>
 
 <script type="module">
-  import { ThreePresenter } from './dist/three-presenter.es.js';
-  const viewer = new ThreePresenter('viewer');
-</script>
-```
-
-**UMD Bundle (Classic):**
-```html
-<script src="https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.min.js"></script>
-<script src="./dist/three-presenter.umd.js"></script>
-
-<script>
-  const { ThreePresenter } = window.ThreePresenter;
+  import { ThreePresenter } from './dist/three-presenter.js';
   const viewer = new ThreePresenter('viewer');
 </script>
 ```
@@ -89,8 +78,7 @@ npm run build
 ```
 
 This creates:
-- `dist/three-presenter.es.js` - ES module for bundlers
-- `dist/three-presenter.umd.js` - UMD bundle for browsers
+- `dist/three-presenter.js` - ES module for modern browsers and bundlers
 - `dist/index.d.ts` - TypeScript type definitions
 
 ## Quick Start
@@ -169,7 +157,6 @@ See [API Documentation](../../docs/api/) for complete reference.
 
 See the `examples/` directory for standalone demos:
 - `standalone.html` - ES module bundle (recommended) ⭐
-- `umd.html` - UMD bundle (maximum compatibility)
 - `basic.html` - Development mode with TypeScript source
 
 To run examples:
@@ -212,7 +199,7 @@ npm install
 
 ### Building
 ```bash
-# Build ES and UMD bundles + type definitions
+# Build ES module + type definitions
 npm run build
 
 # Watch mode (rebuilds on changes)

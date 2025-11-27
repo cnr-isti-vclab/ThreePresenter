@@ -12,15 +12,13 @@ npm run build
 ```
 
 This creates:
-- `dist/three-presenter.es.js` - ES module (for modern bundlers)
-- `dist/three-presenter.umd.js` - UMD bundle (works in browsers)
+- `dist/three-presenter.js` - ES module (for modern browsers and bundlers)
 - `dist/index.d.ts` - TypeScript definitions
 
 ### 2. View the examples
 
 **Standalone examples** (work directly in browser with a simple server):
 - `standalone.html` - ES module version ⭐ Recommended
-- `umd.html` - UMD version (maximum compatibility)
 
 Just open them with a simple server:
 ```bash
@@ -48,16 +46,7 @@ Modern ES module approach - works directly in browsers after build.
 - 🎮 Uses ES modules with import maps
 - 📦 Loads from compiled `dist/` folder
 
-### 2. UMD Example (`umd.html`)
-
-Classic `<script>` tag approach for maximum compatibility.
-
-**Features:**
-- ✅ Works everywhere (even older browsers)
-- 📦 Global variable access (`window.ThreePresenter`)
-- 🔧 Perfect for simple projects or legacy codebases
-
-### 3. Basic Example (`basic.html`)
+### 2. Basic Example (`basic.html`)
 
 Development mode - imports TypeScript source directly.
 
@@ -74,16 +63,7 @@ Development mode - imports TypeScript source directly.
 ### ES Module (Modern)
 ```html
 <script type="module">
-  import { ThreePresenter } from '../dist/three-presenter.es.js';
-  const viewer = new ThreePresenter('viewer');
-</script>
-```
-
-### UMD (Classic)
-```html
-<script src="../dist/three-presenter.umd.js"></script>
-<script>
-  const { ThreePresenter } = window.ThreePresenter;
+  import { ThreePresenter } from '../dist/three-presenter.js';
   const viewer = new ThreePresenter('viewer');
 </script>
 ```
@@ -95,7 +75,6 @@ examples/
 ├── README.md           # This file
 ├── basic.html          # Development mode (TypeScript source)
 ├── standalone.html     # ES module bundle ⭐
-├── umd.html           # UMD bundle
 └── assets/
     └── venus.glb      # 3D model
 ```

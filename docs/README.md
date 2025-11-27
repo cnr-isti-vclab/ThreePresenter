@@ -8,8 +8,7 @@ This folder contains the GitHub Pages demo site for ThreePresenter.
 docs/
 ├── index.html          # Main demo page
 ├── dist/               # Built library files (copied from ../dist/)
-│   ├── three-presenter.umd.js
-│   ├── three-presenter.es.js
+│   ├── three-presenter.js
 │   └── index.d.ts
 └── assets/            # 3D model files
     └── venus.glb
