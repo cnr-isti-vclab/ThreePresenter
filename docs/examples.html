@@ -128,12 +128,46 @@
         const response = await fetch('example1-minimal.html');
         const code = await response.text();
         const codeElement = document.querySelector('#code1 code');
-        // Escape HTML for display
-        codeElement.textContent = code;
+        // Escape HTML for display and add API links
+        codeElement.innerHTML = linkifyAPITerms(escapeHtml(code));
       } catch (error) {
         console.error('Failed to load example code:', error);
         document.querySelector('#code1 code').textContent = 'Failed to load example code.';
       }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function linkifyAPITerms(code) {
+      // Map of API terms to their documentation URLs
+      const apiLinks = {
+        'ThreePresenter': 'api/classes/ThreePresenter.html',
+        'loadScene': 'api/classes/ThreePresenter.html#loadScene',
+        'loadModel': 'api/classes/ModelLoader.html#loadModel',
+        'SceneDescription': 'api/interfaces/SceneDescription.html',
+        'ModelDefinition': 'api/interfaces/ModelDefinition.html',
+        'CameraConfig': 'api/interfaces/CameraConfig.html',
+        'LightingConfig': 'api/interfaces/LightingConfig.html',
+        'EnvironmentSettings': 'api/interfaces/EnvironmentSettings.html',
+        'AnnotationManager': 'api/classes/AnnotationManager.html',
+        'CameraManager': 'api/classes/CameraManager.html',
+        'LightingManager': 'api/classes/LightingManager.html',
+        'ModelLoader': 'api/classes/ModelLoader.html',
+        'getState': 'api/classes/ThreePresenter.html#getState',
+        'dispose': 'api/classes/ThreePresenter.html#dispose',
+      };
+
+      // Replace terms with links (match whole words only)
+      let linkedCode = code;
+      for (const [term, url] of Object.entries(apiLinks)) {
+        const regex = new RegExp(`\\b(${term})\\b`, 'g');
+        linkedCode = linkedCode.replace(regex, `<a href="${url}" class="api-link">$1</a>`);
+      }
+      return linkedCode;
     }
 
     // Load code when page loads

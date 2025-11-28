@@ -1,7 +1,11 @@
 /**
  * Three Presenter - Modular 3D Viewer Components
  * 
- * Independent, reusable modules for building 3D viewers with Three.js
+ * Independent, reusable modules for building 3D viewers with Three.js.
+ * 
+ * @see {@link https://github.com/cnr-isti-vclab/ThreePresenter | GitHub Repository}
+ * @see {@link https://cnr-isti-vclab.github.io/ThreePresenter/ | Documentation & Examples}
+ * @packageDocumentation
  */
 
 // Export main ThreePresenter class

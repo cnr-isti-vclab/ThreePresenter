@@ -22,8 +22,8 @@
     "build:all": "npm run build && npm run docs && cp -r dist/* docs/dist/",
     "dev": "vite",
     "preview": "vite preview",
-    "serve:demo": "serve docs",
-    "docs": "typedoc && node scripts/fix-api-base.js"
+    "serve": "http-server docs -p 3000",
+    "docs": "typedoc"
   },
   "keywords": [
     "three.js",
@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.180.0",
-    "serve": "^14.2.5",
+    "http-server": "^14.1.1",
     "typedoc": "^0.28.14",
     "typescript": "^5.9.2",
     "vite": "^6.0.0"
