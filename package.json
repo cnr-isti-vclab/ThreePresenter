@@ -22,8 +22,8 @@
     "build:all": "npm run build && npm run docs && cp -r dist/* docs/dist/",
     "dev": "vite",
     "preview": "vite preview",
-    "serve:demo": "serve docs --trailing-slash",
-    "docs": "typedoc"
+    "serve:demo": "serve docs",
+    "docs": "typedoc && node scripts/fix-api-base.js"
   },
   "keywords": [
     "three.js",
