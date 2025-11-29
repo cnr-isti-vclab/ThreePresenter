@@ -21,6 +21,8 @@
     "build:demo": "npm run build && cp -r dist/* docs/dist/",
     "build:all": "npm run build && npm run docs && cp -r dist/* docs/dist/",
     "dev": "vite",
+    "dev:watch": "vite build --watch --mode development",
+    "dev:docs": "node scripts/watch-and-copy.js",
     "preview": "vite preview",
     "serve": "http-server docs -p 3000",
     "docs": "typedoc"

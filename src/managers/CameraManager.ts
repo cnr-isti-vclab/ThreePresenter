@@ -472,6 +472,10 @@ export class CameraManager {
     });
     
     this.updateCameraPosition(newPosition, center, controls);
+    
+    // Update initial position and target so resetCamera() works correctly
+    this.setInitialPosition(newPosition);
+    this.setInitialTarget(center);
   }
   
   /**
