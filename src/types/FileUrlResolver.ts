@@ -64,7 +64,7 @@ export interface FileUrlResolver {
  * - Simple deployments where files are co-located
  */
 export class DefaultFileUrlResolver implements FileUrlResolver {
-  resolve(filePath: string, context: FileResolverContext): string {
+  resolve(filePath: string, _context: FileResolverContext): string {
     // If already absolute URL, return as-is
     if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
       return filePath;
@@ -94,7 +94,7 @@ export class StaticBaseUrlResolver implements FileUrlResolver {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
-  resolve(filePath: string, context: FileResolverContext): string {
+  resolve(filePath: string, _context: FileResolverContext): string {
     // If already absolute URL, return as-is
     if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
       return filePath;

@@ -124,7 +124,7 @@ export class ModelLoader {
     
     // For NXS/NXZ files, use direct URL loading (streaming)
     if (format === 'nxs' || format === 'nxz') {
-      const object = await this.parseNexus(url, materialOverrides);
+      const object = await this.parseNexus(url);
       return {
         object,
         format,
@@ -207,7 +207,7 @@ export class ModelLoader {
         if (!url) {
           throw new Error('NXS/NXZ format requires URL for streaming');
         }
-        object = await this.parseNexus(url, materialOverrides);
+        object = await this.parseNexus(url);
         break;
       default:
         throw new Error(`Unsupported format: ${format}`);
@@ -348,12 +348,10 @@ export class ModelLoader {
    * Parse Nexus (NXS/NXZ) format from URL
    * Nexus is a multiresolution format that streams data incrementally
    * @param url URL to the .nxs or .nxz file
-   * @param materialOverrides Optional material overrides (not typically used with Nexus)
    * @returns Promise resolving to NexusObject
    */
   private async parseNexus(
-    url: string,
-    materialOverrides?: MaterialProperties
+    url: string
   ): Promise<THREE.Object3D> {
     // Lazy load nexus3d library
     const { NexusObject } = await import('nexus3d');

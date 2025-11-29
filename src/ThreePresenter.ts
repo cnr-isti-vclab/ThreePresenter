@@ -4,15 +4,14 @@ import type { FileUrlResolver } from './types/FileUrlResolver';
 import { StaticBaseUrlResolver } from './types/FileUrlResolver';
 import { calculateObjectStats, type GeometryStats } from './utils/GeometryUtils';
 import { UIControlsBuilder, type ButtonConfig } from './ui/UIControlsBuilder';
-import { CameraManager, type CameraConfig } from './managers/CameraManager';
+import { CameraManager } from './managers/CameraManager';
 import { LightingManager } from './managers/LightingManager';
 import { ModelLoader } from './managers/ModelLoader';
 // Note: heavy three/examples and viewport gizmo are dynamically imported where needed
 import type { 
   SceneDescription, 
   ModelDefinition, 
-  PresenterState,
-  Annotation
+  PresenterState
 } from './types/SceneTypes';
 
 export type { SceneDescription, ModelDefinition, PresenterState };

@@ -55,7 +55,6 @@ export class AnnotationManager {
   // Annotation state
   private markers: Map<string, THREE.Mesh> = new Map();
   private selectedIds: Set<string> = new Set();
-  private annotations: Annotation[] = [];
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -72,15 +71,13 @@ export class AnnotationManager {
   }
 
   /**
-   * Render annotations as 3D markers in the scene
+   * Render annotations in the scene
    * @param annotations - Array of annotations to render
    */
   render(annotations: Annotation[]): void {
-    this.annotations = annotations;
-    
     // Remove markers that no longer exist
     const currentIds = new Set(annotations.map(a => a.id));
-    for (const [id, marker] of this.markers.entries()) {
+    for (const [id] of this.markers.entries()) {
       if (!currentIds.has(id)) {
         this.removeMarker(id);
       }
@@ -297,7 +294,7 @@ export class AnnotationManager {
    */
   dispose(): void {
     // Remove all markers from scene
-    for (const [id, marker] of this.markers.entries()) {
+    for (const [id] of this.markers.entries()) {
       this.removeMarker(id);
     }
     
