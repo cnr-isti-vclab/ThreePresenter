@@ -40,6 +40,10 @@
   "peerDependencies": {
     "three": "^0.180.0"
   },
+  "dependencies": {
+    "nexus3d": "^1.0.10",
+    "three-viewport-gizmo": "^0.1.5"
+  },
   "devDependencies": {
     "@types/three": "^0.180.0",
     "http-server": "^14.1.1",
