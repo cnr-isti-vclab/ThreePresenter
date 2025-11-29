@@ -63,6 +63,12 @@ export class ThreePresenter {
   perspectiveCamera: THREE.PerspectiveCamera;
   isOrthographic: boolean = false;
   controls: any;
+  /**
+   * Map of loaded runtime 3D objects, keyed by their model ID.
+   * 
+   * These are the actual {@link THREE.Object3D} instances in the scene.
+   * Their initial state (visibility, position, etc.) is derived from the {@link ModelDefinition} configuration.
+   */
   models: Record<string, THREE.Object3D> = {};  // Changed from meshes
   currentScene: SceneDescription | null = null;
   mount: HTMLDivElement;
@@ -758,7 +764,19 @@ export class ThreePresenter {
   }
 
   /**
-   * Load a single model
+   * Load a single model.
+   * 
+   * This method performs the following steps for each model:
+   * 1. **URL Resolution**: Resolves the full URL of the model file using the configured `FileUrlResolver`.
+   * 2. **Loading**: Fetches and parses the model file (PLY, GLTF, GLB, etc.) using `ModelLoader`.
+   *    - Automatically detects format from extension.
+   *    - Applies material overrides (color, roughness, metalness) if specified.
+   * 3. **Transformation**: Applies position, rotation, and scale transformations defined in the model definition.
+   * 4. **Visibility**: Sets the initial visibility state.
+   * 5. **Statistics**: Calculates geometry statistics (vertex count, bounding box, etc.).
+   * 6. **Scene Addition**: Adds the model to the Three.js scene and registers it in the `models` map.
+   * 
+   * @param modelDef The model definition containing file path and properties.
    */
   private async loadModel(modelDef: ModelDefinition): Promise<void> {
     // Use the file URL resolver to get the full URL

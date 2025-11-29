@@ -3,6 +3,16 @@
  * 
  * Independent, reusable modules for building 3D viewers with Three.js.
  * 
+ * ## Architecture Overview
+ * 
+ * The library follows a **Data-Driven Design** pattern, separating state from rendering logic:
+ * 
+ * - **Data (Model)**: The scene is defined by a pure JSON object ({@link SceneDescription}), making it easy to serialize and store.
+ * - **Controller (Presenter)**: The {@link ThreePresenter} class acts as the manager, hydrating the data into an active 3D scene.
+ * - **View**: The underlying {@link ThreePresenter.scene | THREE.Scene} and {@link ThreePresenter.models | models} are managed internally by the presenter.
+ * 
+ * Each {@link ThreePresenter} instance manages exactly one active scene at a time. To display multiple scenes simultaneously, instantiate multiple presenters attached to different DOM elements.
+ * 
  * @see {@link https://github.com/cnr-isti-vclab/ThreePresenter | GitHub Repository}
  * @see {@link https://cnr-isti-vclab.github.io/ThreePresenter/ | Documentation & Examples}
  * @packageDocumentation
@@ -72,8 +82,7 @@ export type {
 export { CameraManager, createCameraManager, calculateFrustumSize } from './managers/CameraManager';
 export type {
   CameraConfig,
-  CameraState,
-  CameraInfo
+  CameraState
 } from './managers/CameraManager';
 
 // Export lighting manager

@@ -37,7 +37,10 @@ export interface Annotation {
 }
 
 /**
- * Describes a single 3D model in the scene
+ * Describes a single 3D model in the scene.
+ * 
+ * This is a **configuration object**. It defines how a model should be loaded and initialized.
+ * Once loaded, the actual runtime object is stored in {@link ThreePresenter.models} as a {@link THREE.Object3D}.
  */
 export interface ModelDefinition {
   /** Unique identifier for the model */

@@ -15,7 +15,10 @@
 import * as THREE from 'three';
 
 /**
- * Configuration for camera initialization
+ * Configuration for camera initialization.
+ * 
+ * This interface is used **only during setup** to define the starting properties of the camera.
+ * All fields are optional and have sensible defaults.
  */
 export interface CameraConfig {
   /** Field of view for perspective camera (degrees) */
@@ -33,7 +36,12 @@ export interface CameraConfig {
 }
 
 /**
- * Camera state for switching between modes
+ * Camera state for switching between modes or saving/restoring views.
+ * 
+ * This interface represents a **snapshot of the camera's runtime state** (position, rotation, target)
+ * at a specific moment in time. It is used for:
+ * - Switching between Perspective and Orthographic modes while preserving the view.
+ * - Saving and restoring camera viewpoints.
  */
 export interface CameraState {
   /** Camera position */
@@ -46,16 +54,6 @@ export interface CameraState {
   distance?: number;
   /** Target position (for controls) */
   target?: THREE.Vector3;
-}
-
-/**
- * Camera information
- */
-export interface CameraInfo {
-  /** Current camera type */
-  type: 'perspective' | 'orthographic';
-  /** Position */
-  position: THREE.Vector3;
   /** Field of view (perspective only) */
   fov?: number;
   /** Frustum dimensions (orthographic only) */
@@ -173,29 +171,6 @@ export class CameraManager {
    */
   getCameraType(): 'perspective' | 'orthographic' {
     return this.isOrthographic ? 'orthographic' : 'perspective';
-  }
-  
-  /**
-   * Get camera information
-   */
-  getCameraInfo(): CameraInfo {
-    const info: CameraInfo = {
-      type: this.getCameraType(),
-      position: this.activeCamera.position.clone()
-    };
-    
-    if (this.isOrthographic) {
-      info.frustum = {
-        left: this.orthographicCamera.left,
-        right: this.orthographicCamera.right,
-        top: this.orthographicCamera.top,
-        bottom: this.orthographicCamera.bottom
-      };
-    } else {
-      info.fov = this.perspectiveCamera.fov;
-    }
-    
-    return info;
   }
   
   /**
@@ -341,13 +316,26 @@ export class CameraManager {
    * @returns CameraState object
    */
   saveCameraState(controls?: any): CameraState {
-    return {
+    const state: CameraState = {
       position: this.activeCamera.position.clone(),
       rotation: this.activeCamera.rotation.clone(),
       type: this.getCameraType(),
       distance: controls ? this.activeCamera.position.distanceTo(controls.target) : undefined,
       target: controls?.target.clone()
     };
+
+    if (this.isOrthographic) {
+      state.frustum = {
+        left: this.orthographicCamera.left,
+        right: this.orthographicCamera.right,
+        top: this.orthographicCamera.top,
+        bottom: this.orthographicCamera.bottom
+      };
+    } else {
+      state.fov = this.perspectiveCamera.fov;
+    }
+
+    return state;
   }
   
   /**
