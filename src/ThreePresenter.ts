@@ -915,46 +915,26 @@ export class ThreePresenter {
         }
       });
       
-      // Position camera at appropriate distance based on scene size
-      // Use a distance that fits the entire scene in view
-      const fov = this.perspectiveCamera.fov * (Math.PI / 180); // Convert to radians
-      const cameraDistance = (maxDim / 2) / Math.tan(fov / 2);
+      // Recalculate bounding box after positioning
+      sceneBBox.makeEmpty();
+      allModels.forEach(m => sceneBBox.expandByObject(m));
+      
+      // Use CameraManager to frame the scene (automatically sets near/far planes)
+      this.cameraManager.frameBoundingBox(sceneBBox, this.controls);
+      
       const targetY = size.y * 0.5;
       
-      // Add some padding (1.2x distance)
-      const finalDistance = cameraDistance * 1.2;
-      
-      this.camera.position.set(0, targetY, finalDistance);
+      // Set reasonable zoom limits based on scene size
       if (this.controls) {
-        this.controls.target.set(0, targetY, 0);
-        // Set reasonable zoom limits based on scene size
         this.controls.minDistance = maxDim * 0.1;
         this.controls.maxDistance = maxDim * 10;
-        this.controls.update();
-      }
-      
-      // Update orthographic camera frustum if it exists
-      if (this.orthographicCamera) {
-        const aspect = this.mount.clientWidth / this.mount.clientHeight;
-        const frustumHeight = maxDim;
-        const frustumWidth = frustumHeight * aspect;
-        this.orthographicCamera.left = -frustumWidth / 2;
-        this.orthographicCamera.right = frustumWidth / 2;
-        this.orthographicCamera.top = frustumHeight / 2;
-        this.orthographicCamera.bottom = -frustumHeight / 2;
-        this.orthographicCamera.position.set(0, targetY, finalDistance);
-        this.orthographicCamera.updateProjectionMatrix();
       }
       
       // Store initial position
       this.initialCameraPosition.copy(this.camera.position);
-      this.initialControlsTarget.set(0, targetY, 0);
+      this.initialControlsTarget.copy(this.controls?.target || new THREE.Vector3(0, targetY, 0));
       
-      // Update camera manager's initial values
-      this.cameraManager.setInitialPosition(this.camera.position);
-      this.cameraManager.setInitialTarget(new THREE.Vector3(0, targetY, 0));
-      
-      console.log(`📷 Camera positioned at distance ${finalDistance.toFixed(2)}, target height ${targetY.toFixed(2)}`);
+      console.log(`📷 Scene framed using CameraManager`);
     }
   }
 

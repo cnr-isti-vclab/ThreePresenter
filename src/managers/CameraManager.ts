@@ -136,6 +136,15 @@ export class CameraManager {
     
     // Start with perspective camera
     this.activeCamera = this.perspectiveCamera;
+    
+    console.log('📷 CameraManager initialized:', {
+      fov,
+      aspect,
+      near,
+      far,
+      initialPosition: initialPosition.toArray(),
+      initialTarget: initialTarget.toArray()
+    });
   }
   
   /**
@@ -274,6 +283,16 @@ export class CameraManager {
       controls.target.copy(target);
       controls.update();
     }
+    
+    const distanceToTarget = target ? position.distanceTo(target) : null;
+    console.log('📐 Camera position updated:', {
+      position: position.toArray(),
+      target: target?.toArray(),
+      distanceToTarget,
+      near: this.activeCamera.near,
+      far: this.activeCamera.far,
+      farPlaneMargin: distanceToTarget ? this.activeCamera.far - distanceToTarget : null
+    });
   }
   
   /**
@@ -406,6 +425,10 @@ export class CameraManager {
     const center = new THREE.Vector3();
     boundingBox.getCenter(center);
     
+    const size = new THREE.Vector3();
+    boundingBox.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    
     const distance = this.calculateOptimalDistance(boundingBox, padding);
     
     // Position camera along current direction
@@ -414,6 +437,39 @@ export class CameraManager {
     direction.multiplyScalar(-1); // Point away from target
     
     const newPosition = center.clone().add(direction.multiplyScalar(distance));
+    
+    // Update near and far planes based on scene size and camera distance
+    // near: should be small enough to see close details but not too small (z-fighting)
+    // far: should be large enough to see the entire scene when zooming out
+    const nearPlane = Math.max(0.01, maxDim * 0.001); // 0.1% of object size, minimum 0.01
+    const farPlane = distance + maxDim * 10; // Camera distance + 2x object size for zoom-out margin
+    console.log('🔍 Calculated near/far planes:', { 
+      maxDim, 
+      nearPlane, 
+      farPlane 
+    });
+    // Update both cameras
+    this.perspectiveCamera.near = nearPlane;
+    this.perspectiveCamera.far = farPlane;
+    this.perspectiveCamera.updateProjectionMatrix();
+    
+    this.orthographicCamera.near = nearPlane;
+    this.orthographicCamera.far = farPlane;
+    this.orthographicCamera.updateProjectionMatrix();
+    
+    console.log('📦 Framing bounding box:', {
+      center: center.toArray(),
+      size: size.toArray(),
+      maxDim,
+      calculatedDistance: distance,
+      padding,
+      cameraType: this.isOrthographic ? 'orthographic' : 'perspective',
+      updatedNear: nearPlane,
+      updatedFar: farPlane,
+      newPosition: newPosition.toArray(),
+      distanceToCenter: newPosition.distanceTo(center),
+      farPlaneMargin: farPlane - newPosition.distanceTo(center)
+    });
     
     this.updateCameraPosition(newPosition, center, controls);
   }
