@@ -709,17 +709,6 @@ export class ThreePresenter {
     if (env.background) {
       this.scene.background = new THREE.Color(env.background);
     }
-
-    // Handle head light offset (stored in degrees in scene JSON)
-    if (env.headLightOffset && Array.isArray(env.headLightOffset) && env.headLightOffset.length >= 2) {
-      this.lightingManager.setHeadLightOffsetFromDegrees(
-        env.headLightOffset[0] || 0,
-        env.headLightOffset[1] || 0
-      );
-      // Immediately apply so the headlight is positioned correctly
-      const target = this.controls?.target || new THREE.Vector3(0, 0, 0);
-      this.lightingManager.updateHeadLight(this.camera, target);
-    }
   }
 
   /**
@@ -1132,14 +1121,6 @@ export class ThreePresenter {
     this.lightingManager.setHeadLightOffsetFromDegrees(thetaDeg, phiDeg);
     const target = this.controls?.target || new THREE.Vector3(0, 0, 0);
     this.lightingManager.updateHeadLight(this.camera, target);
-    // Update currentScene if it exists
-    if (this.currentScene && this.currentScene.environment) {
-      if (!this.currentScene.environment.headLightOffset) {
-        this.currentScene.environment.headLightOffset = [0, 0];
-      }
-      this.currentScene.environment.headLightOffset[0] = thetaDeg;
-      this.currentScene.environment.headLightOffset[1] = phiDeg;
-    }
     console.log('💡 Head light offset updated to:', thetaDeg, phiDeg);
   }
 
