@@ -258,7 +258,7 @@ export class ThreePresenter {
         color: 0xdddddd,
         flatShading: true
       }
-    });
+    }, this.renderer);
     
     // Animation loop
     this.animate = this.animate.bind(this);

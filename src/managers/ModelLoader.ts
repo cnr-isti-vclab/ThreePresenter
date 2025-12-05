@@ -17,6 +17,7 @@ export interface LoaderConfig {
     metalness?: number;
     roughness?: number;
   };
+
 }
 
 /**
@@ -83,6 +84,7 @@ export interface LoadResult {
  */
 export class ModelLoader {
   private config: Required<LoaderConfig>;
+  private renderer: THREE.WebGLRenderer | null = null;
   private plyLoader: any = null;
   private gltfLoader: any = null;
   private dracoLoader: any = null;
@@ -91,7 +93,7 @@ export class ModelLoader {
    * Create a new model loader
    * @param config Configuration options
    */
-  constructor(config: LoaderConfig = {}) {
+  constructor(config: LoaderConfig = {}, renderer?: THREE.WebGLRenderer) {
     this.config = {
       dracoDecoderPath: config.dracoDecoderPath ?? 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/',
       dracoDecoderType: config.dracoDecoderType ?? 'js',
@@ -102,7 +104,9 @@ export class ModelLoader {
         metalness: config.defaultMaterial?.metalness,
         roughness: config.defaultMaterial?.roughness
       }
+    
     };
+    if (renderer) this.renderer = renderer;
   }
 
   /**
@@ -334,7 +338,7 @@ export class ModelLoader {
               group.add(clonedChild);
             }
           });
-          
+
           resolve(group);
         },
         (error: any) => {
@@ -348,29 +352,58 @@ export class ModelLoader {
    * Parse Nexus (NXS/NXZ) format from URL
    * Nexus is a multiresolution format that streams data incrementally
    * @param url URL to the .nxs or .nxz file
-   * @returns Promise resolving to NexusObject
+   * @returns Promise resolving to Nexus3D
    */
   private async parseNexus(
     url: string
   ): Promise<THREE.Object3D> {
-    // Lazy load nexus3d library
-    const { NexusObject } = await import('nexus3d');
+    // Load nexus3d via a wrapper that ensures interop (sets global THREE)
+    const { loadNexus } = await import('../wrappers/loadNexus');
+    const nexusMod = await loadNexus();
+
+    // Ensure we have a renderer to pass to Nexus3D
+    const rendererToUse = this.renderer;
+    if (!rendererToUse) {
+      throw new Error('Nexus3D requires a WebGLRenderer instance; please provide it when creating ModelLoader');
+    }
+
+    const nexusAny: any = nexusMod;
+    const Nexus3D = nexusAny.Nexus3D || nexusAny.default || nexusAny.NexusObject || nexusAny.Nexus;
+
+    if (!Nexus3D) {
+      throw new Error('Unable to locate Nexus3D export from nexus3d package');
+    }
+
+    // Create a Nexus3D instance with the signature: (url, renderer, options)
+    const nxs = new Nexus3D(url, rendererToUse, {
+      onLoad: (nexus: any) => {
+        try {
+          // Clone the boundingSphere center and negate the clone to avoid mutating the original
+          const center = nexus.boundingSphere.center.clone().negate();
+
+          const s = 1 / nexus.boundingSphere.radius;
+
+          nexus.position.set(center.x * s, center.y * s, center.z * s);
+
+          nexus.scale.set(s, s, s);
+
+          // Signal a redraw if a global flag is used by the demo
+        } catch (e) {
+          console.warn('Error while auto-centering/scaling nexus on load', e);
+        }
+
+        console.log('✅ Nexus model loaded:', url);
+      },
+      onUpdate: () => console.log('🔄 Nexus model updated (new data streamed)'),
+      onProgress: () => console.log('a')
+    });
     
-    // Create a NexusObject instance
-    // NexusObject extends THREE.Mesh and handles streaming automatically
-    const nexusObject = new NexusObject(
-      url,
-      () => console.log('✅ Nexus model loaded:', url),
-      () => console.log('🔄 Nexus model updated (new data streamed)'),
-      (error: Error) => console.error('❌ Nexus error:', error)
-    );
-    
-    // NexusObject is a THREE.Mesh that manages its own material and geometry
+    // Nexus3D is a THREE.Mesh that manages its own material and geometry
     // The material is created internally by Nexus and updated during streaming
     
     console.log('🔄 Nexus model created, streaming will begin automatically:', url);
     
-    return nexusObject;
+    return nxs;
   }
 
   /**
