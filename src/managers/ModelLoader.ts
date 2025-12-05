@@ -357,9 +357,10 @@ export class ModelLoader {
   private async parseNexus(
     url: string
   ): Promise<THREE.Object3D> {
-    // Load nexus3d via a wrapper that ensures interop (sets global THREE)
-    const { loadNexus } = await import('../wrappers/loadNexus');
-    const nexusMod = await loadNexus();
+
+    /* ts-ignore instruction is needed, it's not a comment!!! */
+    // @ts-ignore
+    const nexusMod = await import('nexus3d');
 
     // Ensure we have a renderer to pass to Nexus3D
     const rendererToUse = this.renderer;
@@ -395,7 +396,7 @@ export class ModelLoader {
         console.log('✅ Nexus model loaded:', url);
       },
       onUpdate: () => console.log('🔄 Nexus model updated (new data streamed)'),
-      onProgress: () => console.log('a')
+      onProgress: () => {}
     });
     
     // Nexus3D is a THREE.Mesh that manages its own material and geometry
