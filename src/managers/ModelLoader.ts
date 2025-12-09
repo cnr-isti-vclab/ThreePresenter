@@ -146,7 +146,7 @@ export class ModelLoader {
    */
   async loadFromUrl(
     url: string,
-    materialOverrides?: MaterialProperties,
+    materialOverrides?: MaterialProperties | THREE.Material,
     onProgress?: ProgressCallback
   ): Promise<LoadResult> {
     // Detect format from URL
@@ -154,7 +154,7 @@ export class ModelLoader {
     
     // For NXS/NXZ files, use direct URL loading (streaming)
     if (format === 'nxs' || format === 'nxz') {
-      const object = await this.parseNexus(url);
+      const object = await this.parseNexus(url, materialOverrides as any);
       return {
         object,
         format,
@@ -218,18 +218,18 @@ export class ModelLoader {
   async loadFromBuffer(
     buffer: ArrayBuffer,
     format: 'ply' | 'gltf' | 'glb' | 'nxs' | 'nxz',
-    materialOverrides?: MaterialProperties,
+    materialOverrides?: MaterialProperties | THREE.Material,
     url?: string
   ): Promise<LoadResult> {
     let object: THREE.Object3D;
 
     switch (format) {
       case 'ply':
-        object = await this.parsePLY(buffer, materialOverrides);
+        object = await this.parsePLY(buffer, materialOverrides as any);
         break;
       case 'gltf':
       case 'glb':
-        object = await this.parseGLTF(buffer, materialOverrides);
+        object = await this.parseGLTF(buffer, materialOverrides as any);
         break;
       case 'nxs':
       case 'nxz':
@@ -237,7 +237,7 @@ export class ModelLoader {
         if (!url) {
           throw new Error('NXS/NXZ format requires URL for streaming');
         }
-        object = await this.parseNexus(url);
+        object = await this.parseNexus(url, materialOverrides as any);
         break;
       default:
         throw new Error(`Unsupported format: ${format}`);
@@ -281,7 +281,7 @@ export class ModelLoader {
    */
   private async parsePLY(
     buffer: ArrayBuffer,
-    materialOverrides?: MaterialProperties
+    materialOverrides?: MaterialProperties | THREE.Material
   ): Promise<THREE.Mesh> {
     // Lazy load PLYLoader
     if (!this.plyLoader) {
@@ -298,19 +298,23 @@ export class ModelLoader {
     }
 
     // Create material with defaults and overrides
-    const materialProps = this.mergeMaterialProperties(
-      this.config.defaultMaterial,
-      materialOverrides
-    );
+    let finalMaterial: THREE.Material;
+    if (materialOverrides && (materialOverrides as any).isMaterial) {
+      finalMaterial = materialOverrides as THREE.Material;
+    } else {
+      const materialProps = this.mergeMaterialProperties(
+        this.config.defaultMaterial,
+        materialOverrides as MaterialProperties
+      );
+      finalMaterial = new THREE.MeshStandardMaterial({
+        color: materialProps.color,
+        flatShading: materialProps.flatShading,
+        metalness: materialProps.metalness,
+        roughness: materialProps.roughness
+      });
+    }
 
-    const material = new THREE.MeshStandardMaterial({
-      color: materialProps.color,
-      flatShading: materialProps.flatShading,
-      metalness: materialProps.metalness,
-      roughness: materialProps.roughness
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, finalMaterial);
     // Note: PLY loader does not perform normalization or centering. The mesh
     // preserves the geometry's original coordinates. Use ThreePresenter.applyTransforms
     // to position/scale the mesh in the scene, or implement scene-level normalization.
@@ -325,7 +329,7 @@ export class ModelLoader {
    */
   private async parseGLTF(
     buffer: ArrayBuffer,
-    materialOverrides?: MaterialProperties
+    materialOverrides?: MaterialProperties | THREE.Material
   ): Promise<THREE.Group> {
     // Lazy load GLTF and Draco loaders
     if (!this.gltfLoader) {
@@ -357,11 +361,15 @@ export class ModelLoader {
               const clonedChild = child.clone();
 
               // Apply material overrides if specified
-              if (materialOverrides && (clonedChild as THREE.Mesh).material) {
-                this.applyMaterialOverrides(
-                  (clonedChild as THREE.Mesh).material as THREE.Material,
-                  materialOverrides
-                );
+              if (materialOverrides) {
+                if ((materialOverrides as any).isMaterial) {
+                  (clonedChild as THREE.Mesh).material = materialOverrides as THREE.Material;
+                } else if ((clonedChild as THREE.Mesh).material) {
+                  this.applyMaterialOverrides(
+                    (clonedChild as THREE.Mesh).material as THREE.Material,
+                    materialOverrides as MaterialProperties
+                  );
+                }
               }
 
               group.add(clonedChild);
