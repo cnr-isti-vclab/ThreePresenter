@@ -877,7 +877,7 @@ export class ThreePresenter {
     const size = sceneBBox.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     
-    console.log('Scene bounding box size (original):', size, 'maxDim:', maxDim);
+    console.log('frameScene(): Scene bounding box size (original):', size, 'maxDim:', maxDim);
     
     // Store scene size for ground sizing
     this.sceneBBoxSize.copy(size);

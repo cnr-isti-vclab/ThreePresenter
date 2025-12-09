@@ -376,35 +376,74 @@ export class ModelLoader {
     }
 
     // Create a Nexus3D instance with the signature: (url, renderer, options)
-    const nxs = new Nexus3D(url, rendererToUse, {
-      onLoad: (nexus: any) => {
-        try {
-          // Clone the boundingSphere center and negate the clone to avoid mutating the original
-          const center = nexus.boundingSphere.center.clone().negate();
+    // Return a Promise that resolves when the Nexus model finishes its initial load,
+    // so callers (e.g., the presenter) can frame the scene correctly.
+    return await new Promise<THREE.Object3D>((resolve, reject) => {
+      let loadTimeout: NodeJS.Timeout | null = null;
 
-          const s = 1 / nexus.boundingSphere.radius;
+      const nxs = new Nexus3D(url, rendererToUse, {
+        onLoad: (nexus: any) => {
+          try {
+            // Populate geometry bounding data from Nexus boundingSphere (raw coordinates)
+            if (nexus.boundingSphere && nexus.geometry) {
+              const bs = nexus.boundingSphere;
+              if (!nexus.geometry.boundingSphere) nexus.geometry.boundingSphere = new THREE.Sphere();
+              nexus.geometry.boundingSphere.center.copy(bs.center);
+              nexus.geometry.boundingSphere.radius = bs.radius;
+              if (!nexus.geometry.boundingBox) nexus.geometry.boundingBox = new THREE.Box3();
+              const min = new THREE.Vector3(bs.center.x - bs.radius, bs.center.y - bs.radius, bs.center.z - bs.radius);
+              const max = new THREE.Vector3(bs.center.x + bs.radius, bs.center.y + bs.radius, bs.center.z + bs.radius);
+              nexus.geometry.boundingBox.set(min, max);
+              console.log('ℹ️ Nexus loader: geometry bounds set from boundingSphere', { center: bs.center.toArray(), radius: bs.radius });
+            }
+          } catch (e) {
+            console.warn('Error while populating nexus geometry bounds on load', e);
+          }
 
-          nexus.position.set(center.x * s, center.y * s, center.z * s);
+          if (loadTimeout) {
+            clearTimeout(loadTimeout);
+            loadTimeout = null;
+          }
 
-          nexus.scale.set(s, s, s);
-
-          // Signal a redraw if a global flag is used by the demo
-        } catch (e) {
-          console.warn('Error while auto-centering/scaling nexus on load', e);
+          console.log('✅ Nexus model loaded:', url);
+          resolve(nxs);
+        },
+        onUpdate: (nexus: any) => {
+          try {
+            // Refresh geometry bounding data if Nexus updates it during streaming
+            if (nexus.boundingSphere && nexus.geometry) {
+              const bs = nexus.boundingSphere;
+              if (!nexus.geometry.boundingSphere) nexus.geometry.boundingSphere = new THREE.Sphere();
+              nexus.geometry.boundingSphere.center.copy(bs.center);
+              nexus.geometry.boundingSphere.radius = bs.radius;
+              if (!nexus.geometry.boundingBox) nexus.geometry.boundingBox = new THREE.Box3();
+              const min = new THREE.Vector3(bs.center.x - bs.radius, bs.center.y - bs.radius, bs.center.z - bs.radius);
+              const max = new THREE.Vector3(bs.center.x + bs.radius, bs.center.y + bs.radius, bs.center.z + bs.radius);
+              nexus.geometry.boundingBox.set(min, max);
+              console.log('🔄 Nexus model updated bounds:', { center: bs.center.toArray(), radius: bs.radius });
+            }
+          } catch (e) {
+            console.warn('Error while updating nexus geometry bounds on update', e);
+          }
+        },
+        onProgress: () => {},
+        onError: (error: any) => {
+          if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+          console.error('❌ Nexus model failed to load:', url, error);
+          reject(new Error(`Failed to load Nexus model: ${error}`));
         }
+      });
 
-        console.log('✅ Nexus model loaded:', url);
-      },
-      onUpdate: () => console.log('🔄 Nexus model updated (new data streamed)'),
-      onProgress: () => {}
+      // Set a timeout to prevent hanging if the onLoad never fires
+      loadTimeout = setTimeout(() => {
+        console.warn('⏱️ Nexus load timeout, resolving with partial object:', url);
+        // Resolve with whatever we have been returned, but it's not fully loaded.
+        // This avoids blocking the presenter indefinitely; the onUpdate handler still updates bounds.
+        resolve(nxs);
+      }, 30000);
+
+      console.log('🔄 Nexus model created, initial streaming will begin automatically:', url);
     });
-    
-    // Nexus3D is a THREE.Mesh that manages its own material and geometry
-    // The material is created internally by Nexus and updated during streaming
-    
-    console.log('🔄 Nexus model created, streaming will begin automatically:', url);
-    
-    return nxs;
   }
 
   /**
