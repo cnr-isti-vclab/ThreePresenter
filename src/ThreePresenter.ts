@@ -1281,7 +1281,7 @@ export class ThreePresenter {
       const exrLoader = new EXRLoader();
       // Load from public folder
       exrLoader.load(
-        '/brown_photostudio_02_1k.exr',
+        '/assets/brown_photostudio_02_256.exr',
         (texture: THREE.DataTexture) => {
           texture.mapping = THREE.EquirectangularReflectionMapping;
           this.lightingManager.setEnvironmentMap(texture);
