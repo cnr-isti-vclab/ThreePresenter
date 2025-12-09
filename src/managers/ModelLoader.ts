@@ -82,6 +82,32 @@ export interface LoadResult {
  * });
  * ```
  */
+/**
+ * ModelLoader
+ *
+ * Behavior summary:
+ * - parsePLY: returns a THREE.Mesh created from PLY geometry. By default, PLY geometry
+ *   is not normalized or re-centered; set `autoComputeNormals` to true to compute
+ *   vertex normals. The returned mesh preserves the geometry's original coordinates.
+ *
+ * - parseGLTF / parseGLB: returns a THREE.Group containing cloned meshes from the
+ *   GLTF scene. Materials can be overridden via `materialOverrides`. The loader
+ *   does not normalize or re-center GLTF models — transforms defined in the file
+ *   are preserved as-is.
+ *
+ * - parseNexus (NXS / NXZ): Nexus is a streaming, multi-resolution format. This
+ *   loader returns a Promise that resolves once the Nexus `onLoad` event has
+ *   fired (initial model data available). The loader DOES NOT mutate the
+ *   Nexus object's transform (no auto-scaling or centering). The loader will
+ *   populate `geometry.boundingSphere` and `geometry.boundingBox` from Nexus's
+ *   reported `boundingSphere` on `onLoad` and `onUpdate` so scene-level
+ *   bounding computations (Box3.setFromObject) work correctly.
+ *
+ * - General: Model transforms (position, rotation, scale) are not applied by the
+ *   ModelLoader; those are applied by the caller (e.g., ThreePresenter.applyTransforms())
+ *   after loading. This keeps model loading and scene presentation responsibilities
+ *   separate.
+ */
 export class ModelLoader {
   private config: Required<LoaderConfig>;
   private renderer: THREE.WebGLRenderer | null = null;
@@ -285,6 +311,9 @@ export class ModelLoader {
     });
 
     const mesh = new THREE.Mesh(geometry, material);
+    // Note: PLY loader does not perform normalization or centering. The mesh
+    // preserves the geometry's original coordinates. Use ThreePresenter.applyTransforms
+    // to position/scale the mesh in the scene, or implement scene-level normalization.
     return mesh;
   }
 
@@ -339,6 +368,10 @@ export class ModelLoader {
             }
           });
 
+          // Note: GLTF/GLB loader does not perform normalization or centering.
+          // The returned group preserves transforms defined in the file. Use
+          // ThreePresenter.applyTransforms or a scene-level helper to normalize/center.
+
           resolve(group);
         },
         (error: any) => {
@@ -376,8 +409,9 @@ export class ModelLoader {
     }
 
     // Create a Nexus3D instance with the signature: (url, renderer, options)
-    // Return a Promise that resolves when the Nexus model finishes its initial load,
-    // so callers (e.g., the presenter) can frame the scene correctly.
+    // Return a Promise that resolves when the Nexus model finishes its initial load
+    // (onLoad). This keeps behavior consistent with other parsers and allows the
+    // caller to frame the scene using the actual geometry when it becomes available.
     return await new Promise<THREE.Object3D>((resolve, reject) => {
       let loadTimeout: NodeJS.Timeout | null = null;
 
