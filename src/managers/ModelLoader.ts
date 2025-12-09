@@ -413,7 +413,7 @@ export class ModelLoader {
     // (onLoad). This keeps behavior consistent with other parsers and allows the
     // caller to frame the scene using the actual geometry when it becomes available.
     return await new Promise<THREE.Object3D>((resolve, reject) => {
-      let loadTimeout: NodeJS.Timeout | null = null;
+      let loadTimeout: ReturnType<typeof setTimeout> | null = null;
 
       const nxs = new Nexus3D(url, rendererToUse, {
         onLoad: (nexus: any) => {
