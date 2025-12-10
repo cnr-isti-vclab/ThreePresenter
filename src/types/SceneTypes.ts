@@ -1,3 +1,5 @@
+import type * as THREE from 'three';
+
 /**
  * Shared type definitions for scene description and presenter state
  * Used by both frontend and backend
@@ -37,6 +39,17 @@ export interface Annotation {
 }
 
 /**
+ * Serialisable material properties used in scene.json (hex color string expected)
+ */
+export interface MaterialProperties {
+  /** Hex color string, e.g. "#ffffff" */
+  color?: string | number;
+  flatShading?: boolean;
+  metalness?: number;
+  roughness?: number;
+}
+
+/**
  * Describes a single 3D model in the scene.
  * 
  * This is a **configuration object**. It defines how a model should be loaded and initialized.
@@ -59,13 +72,11 @@ export interface ModelDefinition {
   scale?: number | [number, number, number];
   /** Whether the model is visible, defaults to true */
   visible?: boolean;
-  /** Optional material property overrides */
-  material?: {
-    color?: string;
-    metalness?: number;
-    roughness?: number;
-    flatShading?: boolean;
-  };
+  /** Optional material property overrides or a runtime THREE.Material instance
+   *  - As properties (serializable): use color (hex string), metalness, roughness, flatShading.
+   *  - As runtime material instance: provide a THREE.Material that will be set on the loaded mesh(es).
+   */
+  material?: MaterialProperties | (THREE.Material & { isMaterial?: true });
 }
 
 /**

@@ -396,7 +396,8 @@ export class ModelLoader {
    * @returns Promise resolving to Nexus3D
    */
   private async parseNexus(
-    url: string
+    url: string,
+    materialOverrides?: MaterialProperties | THREE.Material
   ): Promise<THREE.Object3D> {
 
     /* ts-ignore instruction is needed, it's not a comment!!! */
@@ -423,6 +424,17 @@ export class ModelLoader {
     return await new Promise<THREE.Object3D>((resolve, reject) => {
       let loadTimeout: ReturnType<typeof setTimeout> | null = null;
 
+      // Determine material if provided as a runtime material or as material properties.
+      let providedMaterial: THREE.Material | undefined;
+      let materialProps: MaterialProperties | undefined = undefined;
+      if (materialOverrides) {
+        if ((materialOverrides as any).isMaterial) {
+          providedMaterial = materialOverrides as THREE.Material;
+        } else {
+          materialProps = materialOverrides as MaterialProperties;
+        }
+      }
+
       const nxs = new Nexus3D(url, rendererToUse, {
         onLoad: (nexus: any) => {
           try {
@@ -437,6 +449,7 @@ export class ModelLoader {
               const max = new THREE.Vector3(bs.center.x + bs.radius, bs.center.y + bs.radius, bs.center.z + bs.radius);
               nexus.geometry.boundingBox.set(min, max);
               console.log('ℹ️ Nexus loader: geometry bounds set from boundingSphere', { center: bs.center.toArray(), radius: bs.radius });
+              console.log('Nexus Triangle Count at full resolution:', nexus.mesh.facesCount);
             }
           } catch (e) {
             console.warn('Error while populating nexus geometry bounds on load', e);
@@ -445,6 +458,29 @@ export class ModelLoader {
           if (loadTimeout) {
             clearTimeout(loadTimeout);
             loadTimeout = null;
+          }
+
+          // If a runtime material instance is provided, assign it to all meshes
+          try {
+            if (providedMaterial) {
+              (nxs as any).traverse((c: any) => {
+                if (c.isMesh) c.material = providedMaterial;
+              });
+            } else if (materialProps) {
+              // Create a shared material instance from provided properties and set on meshes
+              const merged = this.mergeMaterialProperties(this.config.defaultMaterial, materialProps);
+              const sharedMat = new THREE.MeshStandardMaterial({
+                color: merged.color,
+                metalness: merged.metalness,
+                roughness: merged.roughness,
+                flatShading: merged.flatShading
+              });
+              (nxs as any).traverse((c: any) => {
+                if (c.isMesh) c.material = sharedMat;
+              });
+            }
+          } catch (e) {
+            console.warn('Error applying material overrides on nexus onLoad', e);
           }
 
           console.log('✅ Nexus model loaded:', url);
@@ -467,6 +503,34 @@ export class ModelLoader {
           } catch (e) {
             console.warn('Error while updating nexus geometry bounds on update', e);
           }
+          // Re-apply material overrides in case streaming replaced meshes or materials
+          try {
+            if (providedMaterial) {
+              (nexus as any).traverse((c: any) => {
+                if (c.isMesh) c.material = providedMaterial;
+              });
+            } else if (materialProps) {
+              const merged = this.mergeMaterialProperties(this.config.defaultMaterial, materialProps);
+              (nexus as any).traverse((c: any) => {
+                if (c.isMesh) {
+                  // If the material is a MeshStandardMaterial, apply overrides
+                  if (c.material) {
+                    this.applyMaterialOverrides(c.material, merged);
+                  } else {
+                    const m = new THREE.MeshStandardMaterial({
+                      color: merged.color,
+                      metalness: merged.metalness,
+                      roughness: merged.roughness,
+                      flatShading: merged.flatShading
+                    });
+                    c.material = m;
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Error applying material overrides on nexus update', e);
+          }
         },
         onProgress: () => {},
         onError: (error: any) => {
@@ -474,7 +538,7 @@ export class ModelLoader {
           console.error('❌ Nexus model failed to load:', url, error);
           reject(new Error(`Failed to load Nexus model: ${error}`));
         }
-      });
+      }, providedMaterial);
 
       // Set a timeout to prevent hanging if the onLoad never fires
       loadTimeout = setTimeout(() => {

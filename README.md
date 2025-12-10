@@ -57,8 +57,27 @@ After building, you can use the library directly in HTML:
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+
+## API Reference
+
   }
 }
+
+ThreePresenter supports per-model material overrides via the `material` field in `ModelDefinition`.
+You can provide either a serialisable material properties object (e.g., color, metalness, roughness, flatShading) or a runtime `THREE.Material` instance applied programmatically after load.
+
+Example (serialisable):
+```json
+{ "material": { "color": "#ff4444", "metalness": 0.2, "roughness": 0.8 } }
+```
+
+Example (runtime material):
+```ts
+const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+// after load:
+object.traverse(c => { if (c.isMesh) c.material = mat; });
+```
+
 </script>
 
 <script type="module">

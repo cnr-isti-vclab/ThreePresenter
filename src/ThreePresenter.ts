@@ -835,12 +835,22 @@ export class ThreePresenter {
    */
   private async loadModelFile(url: string, modelDef: ModelDefinition): Promise<THREE.Object3D> {
     // Use the ModelLoader to handle format detection and loading
-    const materialOverrides = modelDef.material ? {
-      color: modelDef.material.color ? parseInt(modelDef.material.color.replace('#', ''), 16) : undefined,
-      flatShading: modelDef.material.flatShading,
-      metalness: modelDef.material.metalness,
-      roughness: modelDef.material.roughness
-    } : undefined;
+    let materialOverrides: any = undefined;
+    if (modelDef.material) {
+      // If a runtime THREE.Material instance is provided, pass it through.
+      if ((modelDef.material as any).isMaterial) {
+        materialOverrides = modelDef.material as any;
+      } else {
+        // Otherwise, treat as MaterialProperties (serializable form) and convert
+        const rawColor = (modelDef.material as any).color;
+        materialOverrides = {
+          color: rawColor ? (typeof rawColor === 'string' ? parseInt(rawColor.replace('#', ''), 16) : rawColor) : undefined,
+          flatShading: (modelDef.material as any).flatShading,
+          metalness: (modelDef.material as any).metalness,
+          roughness: (modelDef.material as any).roughness
+        };
+      }
+    }
 
     // Create progress callback
     const onProgress = (loaded: number, total: number, percentage: number) => {

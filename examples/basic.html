@@ -42,10 +42,21 @@
     const sceneDescription = {
       projectId: 'example',
       models: [{
-        id: 'venus',
-        file: 'venus.glb',
-        rotation: [-90, 0, 0],
-      }],
+          id: 'venus',
+          file: 'venus.glb',
+          rotation: [-90, 0, 0],
+        },
+        {
+          id: 'statue-red',
+          file: 'venus.glb',
+          position: [2, 0, 0],
+          material: {
+            color: '#ff6666',
+            metalness: 0.3,
+            roughness: 0.7
+          }
+        }
+      ],
       environment: {
         showGround: true,
       }
@@ -63,6 +74,17 @@
       })
       .catch((error) => {
         console.error('❌ Error loading scene:', error);
+      });
+  </script>
+  <script type="module">
+    // Programmatically apply a runtime material to the second model after load
+    import * as THREE from 'three';
+    const presenter = new ThreePresenter('viewer');
+    const mat = new THREE.MeshStandardMaterial({ color: 0x00ff00, metalness: 0.5 });
+    presenter.loadScene({ projectId: 'example', models: [{ id: 'venus', file: 'venus.glb' }] })
+      .then(() => {
+        const obj = presenter.models['venus'];
+        if (obj) obj.traverse((c) => { if (c && c.isMesh) c.material = mat; });
       });
   </script>
 </body>
