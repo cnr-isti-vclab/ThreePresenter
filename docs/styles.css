@@ -269,3 +269,17 @@ body {
     gap: 1rem;
   }
 }
+/* UTILITIES */
+.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* Fix for Viewport Gizmo visibility */
+.viewport-gizmo, .gizmo-container {
+  position: absolute !important;
+  top: 10px !important;
+  right: 10px !important;
+  z-index: 900 !important;
+}
