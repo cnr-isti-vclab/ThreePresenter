@@ -3,7 +3,7 @@
 // Dev runner: starts the watch-and-copy builder and the static server together
 // Usage: npm run dev:live
 
-const { spawn } = require('child_process');
+import { spawn } from 'child_process';
 
 function run(cmd, args, name) {
   const ps = spawn(cmd, args, { stdio: ['inherit', 'pipe', 'pipe'], shell: true });

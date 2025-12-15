@@ -19,12 +19,12 @@ async function buildAndCopy() {
     console.log('⏳ Build already in progress, skipping...');
     return;
   }
-  
+
   isBuilding = true;
   console.log('\n🔨 Building library...');
-  
+
   try {
-    const { stdout, stderr } = await execAsync('npm run build:demo');
+    const { stdout, stderr } = await execAsync('npm run build:all');
     if (stderr && !stderr.includes('deprecated')) {
       console.error(stderr);
     }

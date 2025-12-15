@@ -3,19 +3,39 @@ import { AnnotationManager } from './managers/AnnotationManager';
 import type { FileUrlResolver } from './types/FileUrlResolver';
 import { StaticBaseUrlResolver } from './types/FileUrlResolver';
 import { calculateObjectStats, type GeometryStats } from './utils/GeometryUtils';
-import { UIControlsBuilder, type ButtonConfig } from './ui/UIControlsBuilder';
+
 import { CameraManager } from './managers/CameraManager';
 import { LightingManager } from './managers/LightingManager';
 import { ModelLoader } from './managers/ModelLoader';
+import { InputController } from './managers/InputController';
+import { RenderLoop } from './managers/RenderLoop';
 // Note: heavy three/examples and viewport gizmo are dynamically imported where needed
-import type { 
-  SceneDescription, 
-  ModelDefinition, 
+import type {
+  SceneDescription,
+  ModelDefinition,
   PresenterState
 } from './types/SceneTypes';
 
 export type { SceneDescription, ModelDefinition, PresenterState };
 export { AnnotationManager };
+
+/**
+ * Configuration options for ThreePresenter
+ */
+export interface ThreePresenterConfig {
+  /** The container element or its ID */
+  mount: HTMLDivElement | string;
+  /** Optional file URL resolver */
+  fileUrlResolver?: FileUrlResolver;
+  /** Optional dependency injection for managers */
+  managers?: {
+    modelLoader?: ModelLoader;
+    lightingManager?: LightingManager;
+    cameraManager?: CameraManager;
+    renderLoop?: RenderLoop;
+    // InputController and AnnotationManager are tightly coupled to the scene/renderer currently
+  };
+}
 
 /**
  * Progress information for model loading
@@ -72,62 +92,74 @@ export class ThreePresenter {
   currentScene: SceneDescription | null = null;
   mount: HTMLDivElement;
   ground: THREE.GridHelper | null = null;
-  homeButton: HTMLButtonElement;
-  lightButton: HTMLButtonElement;
-  lightPositionButton: HTMLButtonElement;
   viewportGizmo: any = null;
-  envButton: HTMLButtonElement;
-  screenshotButton: HTMLButtonElement;
-  cameraButton: HTMLButtonElement;
-  annotationButton: HTMLButtonElement;
   isPickingMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
+  // State change callbacks
+  onLightChange?: (enabled: boolean) => void;
+  onEnvChange?: (enabled: boolean) => void;
+  onPickingModeChange?: (enabled: boolean) => void;
+  onCameraModeChange?: (isOrthographic: boolean) => void;
   initialCameraPosition: THREE.Vector3 = new THREE.Vector3(0, 0, 2);
   initialControlsTarget: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   lightEnabled: boolean = true;
-  raycaster: THREE.Raycaster = new THREE.Raycaster();
-  mouse: THREE.Vector2 = new THREE.Vector2();
   modelStats: Record<string, GeometryStats> = {};
   sceneBBoxSize: THREE.Vector3 = new THREE.Vector3(2, 2, 2); // Store actual scene size for ground
-  
+
   // File URL resolver for loading models
   private fileUrlResolver: FileUrlResolver;
-  
+
   // Loading progress callbacks
   onLoadProgress?: (progress: LoadingProgress) => void;
   onLoadComplete?: (modelId: string) => void;
   onLoadError?: (modelId: string, error: Error) => void;
-  
+
   // Managers
   private annotationManager: AnnotationManager;
   private cameraManager: CameraManager;
   private lightingManager: LightingManager;
   private modelLoader: ModelLoader;
+  private inputController: InputController;
+  private renderLoop: RenderLoop;
 
-  constructor(mount: HTMLDivElement | string, fileUrlResolver?: FileUrlResolver) {
+  constructor(configOrMount: ThreePresenterConfig | string, fileUrlResolver?: FileUrlResolver) {
+    let config: ThreePresenterConfig;
+
+    // Handle legacy constructor signature: (mount, resolver)
+    if (typeof configOrMount === 'string' || configOrMount instanceof HTMLDivElement) {
+      config = {
+        mount: configOrMount,
+        fileUrlResolver: fileUrlResolver
+      };
+    } else {
+      config = configOrMount;
+    }
+
     // Support both element and element ID
-    if (typeof mount === 'string') {
-      const element = document.getElementById(mount);
+    if (typeof config.mount === 'string') {
+      const element = document.getElementById(config.mount);
       if (!element) {
-        throw new Error(`Element with ID "${mount}" not found`);
+        throw new Error(`Element with ID "${config.mount}" not found`);
       }
       this.mount = element as HTMLDivElement;
     } else {
-      this.mount = mount;
+      this.mount = config.mount;
     }
-    
+
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x404040);
     const widthPx = this.mount.clientWidth;
     const heightPx = this.mount.clientHeight;
     const aspect = widthPx / heightPx;
-    
-    // Initialize file URL resolver (use StaticBaseUrlResolver with './assets' as default)
-    // This makes standalone examples work out-of-the-box
-    this.fileUrlResolver = fileUrlResolver || new StaticBaseUrlResolver('./assets');
-    
-    // Create camera manager
-    this.cameraManager = new CameraManager(aspect, {
+
+    // Initialize file URL resolver
+    this.fileUrlResolver = config.fileUrlResolver || new StaticBaseUrlResolver('./assets');
+
+    // Initialize managers (use injected or create new)
+    const managers = config.managers || {};
+
+    // Camera Manager
+    this.cameraManager = managers.cameraManager || new CameraManager(aspect, {
       fov: 40,
       near: 0.1,
       far: 1000,
@@ -135,177 +167,100 @@ export class ThreePresenter {
       initialPosition: new THREE.Vector3(0, 0, 2),
       initialTarget: new THREE.Vector3(0, 0, 0)
     });
-    
+
     // Get cameras from manager
     this.perspectiveCamera = this.cameraManager.getPerspectiveCamera();
     this.orthographicCamera = this.cameraManager.getOrthographicCamera();
     this.camera = this.cameraManager.getActiveCamera();
-    
+
+    // Renderer setup
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(widthPx, heightPx);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.mount.appendChild(this.renderer.domElement);
-    
-    // Initialize annotation manager
+
+    // Filter out injected managers for initialization of other managers if needed
+
+    // Lighting Manager (envMapIntensity not supported in config, handled by Presenter's loadEnvironmentMap)
+    this.lightingManager = managers.lightingManager || new LightingManager(this.scene, {
+      ambientIntensity: 0.5,
+      headLightIntensity: 0.8
+    });
+    this.lightEnabled = this.lightingManager.isHeadLightEnabled();
+
+    // Model Loader - ThreePresenter handles URL resolution, so Loader doesn't need resolver
+    // We pass renderer to loader (optional, for decoding setup optionally)
+    this.modelLoader = managers.modelLoader || new ModelLoader({
+      dracoDecoderPath: 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/',
+      autoComputeNormals: true
+    }, this.renderer);
+
+    // Initialize annotation manager (internal)
+    // AnnotationManager takes (scene, config)
     this.annotationManager = new AnnotationManager(this.scene, {
       color: 0xffff00,
       selectedColor: 0xffff66,
       markerSize: 10
     });
-    
+
     // Load environment map
     this.loadEnvironmentMap();
 
-    // Create UI controls using UIControlsBuilder
-    // All buttons are hidden by default - use setButtonVisible() to show them
-    const buttonConfigs: ButtonConfig[] = [
-      {
-        id: 'home',
-        icon: 'bi-house',
-        title: 'Reset camera view',
-        onClick: () => this.resetCamera(),
-        visible: false
+    // Input Controller setup
+    this.inputController = new InputController({
+      domElement: this.renderer.domElement,
+      getCamera: () => this.camera,
+      getModels: () => Object.values(this.models),
+      getAnnotations: () => this.annotationManager.getAllMarkers(),
+      onModelDoubleClick: (point: THREE.Vector3) => {
+        if (this.isPickingMode) {
+          const coords: [number, number, number] = [point.x, point.y, point.z];
+          console.log('📍 Picked 3D point:', coords.map(v => v.toFixed(4)));
+          this.onPointPicked?.(coords);
+          this.exitPickingMode();
+        } else {
+          console.log('🎯 Recentering camera on point:', point);
+          this.animateCameraTarget(point);
+        }
       },
-      {
-        id: 'light',
-        icon: 'bi-lightbulb-fill',
-        title: 'Toggle lighting',
-        onClick: () => this.toggleLight(),
-        visible: false
+      onAnnotationClick: (object, isMulti) => {
+        const id = this.annotationManager.getAnnotationIdFromMarker(object as THREE.Mesh);
+        if (id) {
+          if (isMulti) this.annotationManager.toggleSelection(id);
+          else this.annotationManager.select([id], false);
+        }
       },
-      {
-        id: 'lightPosition',
-        icon: 'bi-brightness-high', // Will be overridden by customHTML
-        customHTML: `
-          <div style="position: relative; width: 16px; height: 16px;">
-            <i class="bi bi-brightness-high" style="position: absolute; top: -10px; left: -4px; font-size: 24px;"></i>
-            <i class="bi bi-arrows-move" style="position: absolute; font-size: 32px; top: -16px; left: -8px;"></i>
-          </div>
-        `,
-        title: 'Position headlight',
-        onClick: () => {}, // TODO: Add light positioning functionality
-        visible: false
-      },
-      {
-        id: 'env',
-        icon: 'bi-globe',
-        title: 'Toggle environment lighting',
-        onClick: () => this.toggleEnvLighting(),
-        visible: false
-      },
-      {
-        id: 'screenshot',
-        icon: 'bi-camera',
-        title: 'Take screenshot',
-        onClick: () => this.takeScreenshot(),
-        visible: false
-      },
-      {
-        id: 'camera',
-        icon: 'bi-box',
-        title: 'Toggle orthographic/perspective',
-        onClick: () => this.toggleCameraMode(),
-        visible: false
-      },
-      {
-        id: 'annotation',
-        icon: 'bi-pencil',
-        title: 'Add annotation',
-        onClick: () => this.togglePickingMode(),
-        visible: false
+      onBackgroundClick: (isMulti) => {
+        if (!isMulti) this.annotationManager.clearSelection();
       }
-    ];
-
-    const controlsBuilder = new UIControlsBuilder();
-    const uiControls = controlsBuilder
-      .setContainer({
-        position: 'top-left',
-        direction: 'vertical',
-        gap: 'gap-2',
-        zIndex: '1000'
-      })
-      .addButtons(buttonConfigs)
-      .build();
-
-    // Store button references
-    this.homeButton = uiControls.buttons.get('home')!;
-    this.lightButton = uiControls.buttons.get('light')!;
-    this.lightPositionButton = uiControls.buttons.get('lightPosition')!;
-    this.envButton = uiControls.buttons.get('env')!;
-    this.screenshotButton = uiControls.buttons.get('screenshot')!;
-    this.cameraButton = uiControls.buttons.get('camera')!;
-    this.annotationButton = uiControls.buttons.get('annotation')!;
-
-    // Append UI controls to mount
-    this.mount.style.position = this.mount.style.position || 'relative'; // ensure mount positioned for absolute children
-    this.mount.appendChild(uiControls.container);
-
-
-    // Lighting setup
-    this.lightingManager = new LightingManager(this.scene, {
-      ambientIntensity: 0.1,
-      headLightIntensity: 0.9,
-      lightColor: 0xffffff,
-      initialOffset: new THREE.Vector2(0, 0)
     });
-    
-    // Model loading setup
-    this.modelLoader = new ModelLoader({
-      dracoDecoderPath: 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/',
-      autoComputeNormals: true,
-      defaultMaterial: {
-        color: 0xdddddd,
-        flatShading: true
-      }
-    }, this.renderer);
-    
-    // Animation loop
-    this.animate = this.animate.bind(this);
-    this.animate();
+
+    // Render Loop setup
+    this.renderLoop = managers.renderLoop || new RenderLoop();
+    this.renderLoop.addCallback(() => this.renderFrame());
+    this.renderLoop.start();
+
     // Resize handler
     this.handleResize = this.handleResize.bind(this);
     window.addEventListener('resize', this.handleResize);
-    // Double-click handler for recentering
-    this.handleDoubleClick = this.handleDoubleClick.bind(this);
-    this.renderer.domElement.addEventListener('dblclick', this.handleDoubleClick);
-    // Click handler for annotation selection
-    this.handleClick = this.handleClick.bind(this);
-    this.renderer.domElement.addEventListener('click', this.handleClick);
   }
 
   dispose() {
     window.removeEventListener('resize', this.handleResize);
-    this.renderer.domElement.removeEventListener('dblclick', this.handleDoubleClick);
-    this.renderer.domElement.removeEventListener('click', this.handleClick);
-    
+
     // Dispose managers
+    this.renderLoop.dispose();
+    this.inputController.dispose();
     this.annotationManager.dispose();
     this.lightingManager.dispose();
     this.modelLoader.dispose();
-    
+
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
     }
-    if (this.homeButton.parentNode) {
-      this.homeButton.parentNode.removeChild(this.homeButton);
-    }
-    if (this.lightButton.parentNode) {
-      this.lightButton.parentNode.removeChild(this.lightButton);
-    }
-    if (this.lightPositionButton.parentNode) {
-      this.lightPositionButton.parentNode.removeChild(this.lightPositionButton);
-    }
-    if (this.envButton.parentNode) {
-      this.envButton.parentNode.removeChild(this.envButton);
-    }
-    if (this.screenshotButton.parentNode) {
-      this.screenshotButton.parentNode.removeChild(this.screenshotButton);
-    }
-    if (this.annotationButton.parentNode) {
-      this.annotationButton.parentNode.removeChild(this.annotationButton);
-    }
+
     if (this.viewportGizmo && this.viewportGizmo.dispose) {
       this.viewportGizmo.dispose();
       this.viewportGizmo = null;
@@ -315,113 +270,20 @@ export class ThreePresenter {
   handleResize() {
     const w = this.mount.clientWidth;
     const h = this.mount.clientHeight;
-    
+
     this.renderer.setSize(w, h);
-    
+
     // Use camera manager to handle resize for both cameras
     this.cameraManager.handleResize(w, h);
-    
+
     // Update camera reference
     this.camera = this.cameraManager.getActiveCamera();
-    
-    if (this.controls) this.controls.update(); 
+
+    if (this.controls) this.controls.update();
     if (this.viewportGizmo) this.viewportGizmo.update();
   }
 
-  /**
-   * Handle double-click on the canvas to recenter the camera on the clicked point
-   */
-  handleDoubleClick(event: MouseEvent) {
-    if (!this.controls) return;
 
-    // Calculate mouse position in normalized device coordinates (-1 to +1)
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    // Update raycaster
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-
-    // Get all model objects for raycasting
-    const modelObjects: THREE.Object3D[] = [];
-    Object.values(this.models).forEach(model => {
-      // Recursively collect all meshes in the model
-      model.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          modelObjects.push(child);
-        }
-      });
-    });
-
-    // Check for intersections
-    const intersects = this.raycaster.intersectObjects(modelObjects, false);
-
-    if (intersects.length > 0) {
-      const intersectionPoint = intersects[0].point;
-      
-      // If in picking mode, notify callback and exit picking mode
-      if (this.isPickingMode) {
-        const coords: [number, number, number] = [
-          intersectionPoint.x,
-          intersectionPoint.y,
-          intersectionPoint.z
-        ];
-        console.log('📍 Picked 3D point:', coords.map(v => v.toFixed(4)));
-        
-        // Call the callback if set
-        if (this.onPointPicked) {
-          this.onPointPicked(coords);
-        }
-        
-        this.exitPickingMode();
-        return;
-      }
-      
-      // Otherwise, recenter camera on point
-      console.log('🎯 Recentering camera on point:', intersectionPoint);
-      this.animateCameraTarget(intersectionPoint);
-    }
-  }
-
-  /**
-   * Handle single click for annotation selection
-   */
-  handleClick(event: MouseEvent) {
-    // Don't handle clicks while in picking mode
-    if (this.annotationManager.isPickingMode()) return;
-    
-    // Calculate mouse position in normalized device coordinates
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    // Update raycaster
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-
-    // Check for intersections with annotation markers
-    const markerObjects = this.annotationManager.getAllMarkers();
-    const intersects = this.raycaster.intersectObjects(markerObjects, false);
-
-    if (intersects.length > 0) {
-      // Find which annotation was clicked
-      const clickedMarker = intersects[0].object as THREE.Mesh;
-      const clickedAnnotationId = this.annotationManager.getAnnotationIdFromMarker(clickedMarker);
-
-      if (clickedAnnotationId) {
-        // Toggle selection with Ctrl/Cmd for multi-select, otherwise single select
-        if (event.ctrlKey || event.metaKey) {
-          this.annotationManager.toggleSelection(clickedAnnotationId);
-        } else {
-          this.annotationManager.select([clickedAnnotationId], false); // Replace selection
-        }
-      }
-    } else {
-      // Clicked on empty space - clear selection if not using modifier keys
-      if (!event.ctrlKey && !event.metaKey) {
-        this.annotationManager.clearSelection();
-      }
-    }
-  }
 
   /**
    * Toggle picking mode for annotation placement
@@ -439,9 +301,8 @@ export class ThreePresenter {
    */
   private enterPickingMode() {
     this.isPickingMode = true;
-    this.renderer.domElement.style.cursor = 'crosshair';
-    this.annotationButton.style.backgroundColor = '#0d6efd'; // Bootstrap primary blue
-    this.annotationButton.style.color = 'white';
+    this.inputController.setPickingMode(true);
+    this.onPickingModeChange?.(true);
     console.log('✏️ Entered picking mode - double-click on model to pick a point');
   }
 
@@ -450,9 +311,8 @@ export class ThreePresenter {
    */
   private exitPickingMode() {
     this.isPickingMode = false;
-    this.renderer.domElement.style.cursor = 'auto';
-    this.annotationButton.style.backgroundColor = '';
-    this.annotationButton.style.color = '';
+    this.inputController.setPickingMode(false);
+    this.onPickingModeChange?.(false);
     console.log('✅ Exited picking mode');
   }
 
@@ -470,7 +330,7 @@ export class ThreePresenter {
     const animate = () => {
       const elapsed = performance.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      
+
       // Ease-out cubic for smooth deceleration
       const easeProgress = 1 - Math.pow(1 - progress, 3);
 
@@ -486,19 +346,18 @@ export class ThreePresenter {
     animate();
   }
 
-  animate() {
-    requestAnimationFrame(this.animate);
+  private renderFrame() {
     if (this.controls) this.controls.update();
-    
+
     // Update head light position to follow camera
-    const target = (this.controls && this.controls.target) 
-      ? this.controls.target 
+    const target = (this.controls && this.controls.target)
+      ? this.controls.target
       : new THREE.Vector3(0, 0, 0);
     this.lightingManager.updateHeadLight(this.camera, target);
-    
+
     // Update annotation marker scales to maintain constant screen space size
     this.annotationManager.updateMarkerScales(this.camera, this.renderer.domElement.clientHeight);
-    
+
     // Update Nexus objects for multiresolution streaming
     this.scene.traverse((object: THREE.Object3D) => {
       if ((object as any).update && typeof (object as any).update === 'function') {
@@ -506,7 +365,7 @@ export class ThreePresenter {
         (object as any).update(this.camera);
       }
     });
-    
+
     this.renderer.render(this.scene, this.camera);
 
     // Render viewport gizmo if present
@@ -578,7 +437,7 @@ export class ThreePresenter {
         savedCameraTarget = this.controls.target.clone();
         console.log('📷 Preserving camera position during scene reload');
       }
-      
+
       this.currentScene = sceneDesc;
 
       // Clear existing scene
@@ -597,7 +456,7 @@ export class ThreePresenter {
       // Load all models
       if (sceneDesc.models && sceneDesc.models.length > 0) {
         await this.loadAllModels(sceneDesc.models);
-        
+
         if (!preserveCamera) {
           this.frameScene();
         } else {
@@ -607,14 +466,14 @@ export class ThreePresenter {
           const size = sceneBBox.getSize(new THREE.Vector3());
           this.sceneBBoxSize.copy(size);
         }
-        
+
         // Recreate ground with correct size after framing scene
         if (sceneDesc.environment?.showGround) {
           this.removeGround();
           this.addGround();
         }
       }
-      
+
       // Restore camera position if preserved
       if (preserveCamera && savedCameraPos && savedCameraTarget && this.controls) {
         this.camera.position.copy(savedCameraPos);
@@ -703,7 +562,7 @@ export class ThreePresenter {
     if (env.showGround) {
       this.addGround();
     }
-    
+
     // Handle background color
     if (env.background) {
       this.scene.background = new THREE.Color(env.background);
@@ -715,7 +574,7 @@ export class ThreePresenter {
    */
   private async setupControls(): Promise<void> {
     if (this.controls) return; // Already setup
-    
+
     const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
@@ -770,9 +629,9 @@ export class ThreePresenter {
     // Use the file URL resolver to get the full URL
     const projectId = this.currentScene?.projectId;
     const fullUrl = this.fileUrlResolver.resolve(modelDef.file, { projectId });
-    
+
     console.log(`Loading model ${modelDef.id} from ${fullUrl}`);
-    
+
     try {
       // Notify loading started
       this.onLoadProgress?.({
@@ -783,25 +642,25 @@ export class ThreePresenter {
         percentage: 0,
         status: 'loading'
       });
-      
+
       const model = await this.loadModelFile(fullUrl, modelDef);
-      
+
       // Apply transforms (position, rotation, scale)
       this.applyTransforms(model, modelDef);
       if (modelDef.visible !== undefined) {
         model.visible = modelDef.visible;
       }
-      
+
       // Calculate and store model statistics
       this.modelStats[modelDef.id] = calculateObjectStats(model);
       console.log(`📊 Model ${modelDef.id} stats:`, this.modelStats[modelDef.id]);
-      
+
       // Store and add to scene
       this.models[modelDef.id] = model;
       this.scene.add(model);
-      
+
       console.log(`✅ Loaded model ${modelDef.id}`);
-      
+
       // Notify completion
       this.onLoadProgress?.({
         modelId: modelDef.id,
@@ -814,7 +673,7 @@ export class ThreePresenter {
       this.onLoadComplete?.(modelDef.id);
     } catch (error) {
       console.error(`❌ Failed to load model ${modelDef.id}:`, error);
-      
+
       // Notify error
       this.onLoadProgress?.({
         modelId: modelDef.id,
@@ -825,7 +684,7 @@ export class ThreePresenter {
         status: 'error'
       });
       this.onLoadError?.(modelDef.id, error as Error);
-      
+
       throw error;
     }
   }
@@ -866,7 +725,7 @@ export class ThreePresenter {
 
     const result = await this.modelLoader.loadFromUrl(url, materialOverrides, onProgress);
     console.log(`📦 Loaded ${result.format.toUpperCase()} model (${(result.byteSize / 1024).toFixed(2)} KB)`);
-    
+
     return result.object;
   }
 
@@ -880,26 +739,26 @@ export class ThreePresenter {
   private frameScene(): void {
     const allModels = Object.values(this.models);
     if (allModels.length === 0) return;
-    
+
     // Calculate scene bounding box to determine camera position and ground size
     const sceneBBox = new THREE.Box3();
     allModels.forEach(m => sceneBBox.expandByObject(m));
     const size = sceneBBox.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    
+
     console.log('frameScene(): Scene bounding box size (original):', size, 'maxDim:', maxDim);
-    
+
     // Store scene size for ground sizing
     this.sceneBBoxSize.copy(size);
-    
+
     if (maxDim > 0) {
       const center = sceneBBox.getCenter(new THREE.Vector3());
-      
+
       // Calculate translation needed to center scene
       const offsetX = -center.x;
       const offsetZ = -center.z;
       const offsetY = -sceneBBox.min.y;
-      
+
       // Apply automatic positioning only to models without predefined positions
       allModels.forEach((model, idx) => {
         if (this.currentScene?.models) {
@@ -909,7 +768,7 @@ export class ThreePresenter {
             if (!modelDef.position || modelDef.position.length !== 3) {
               const translation = new THREE.Vector3(offsetX, offsetY, offsetZ);
               model.position.add(translation);
-              
+
               // Store the computed position in the model definition (rounded to 3 decimals)
               const pos = model.position;
               modelDef.position = [
@@ -924,26 +783,26 @@ export class ThreePresenter {
           }
         }
       });
-      
+
       // Recalculate bounding box after positioning
       sceneBBox.makeEmpty();
       allModels.forEach(m => sceneBBox.expandByObject(m));
-      
+
       // Use CameraManager to frame the scene (automatically sets near/far planes)
       this.cameraManager.frameBoundingBox(sceneBBox, this.controls);
-      
+
       const targetY = size.y * 0.5;
-      
+
       // Set reasonable zoom limits based on scene size
       if (this.controls) {
         this.controls.minDistance = maxDim * 0.1;
         this.controls.maxDistance = maxDim * 10;
       }
-      
+
       // Store initial position
       this.initialCameraPosition.copy(this.camera.position);
       this.initialControlsTarget.copy(this.controls?.target || new THREE.Vector3(0, targetY, 0));
-      
+
       console.log(`📷 Scene framed using CameraManager`);
     }
   }
@@ -1016,15 +875,16 @@ export class ThreePresenter {
       this.camera.fov = state.camera.fov;
       this.camera.updateProjectionMatrix();
     }
-    
+
     // Restore rendering settings
     this.lightEnabled = state.rendering.headLightEnabled;
     this.lightingManager.setHeadLightEnabled(this.lightEnabled);
-    this.lightButton.innerHTML = this.lightEnabled ? '<i class="bi bi-lightbulb-fill"></i>' : '<i class="bi bi-lightbulb"></i>';
-    
-    this.lightingManager.setEnvironmentLightingEnabled(state.rendering.envLightingEnabled);
-    this.envButton.innerHTML = state.rendering.envLightingEnabled ? '<i class="bi bi-globe"></i>' : '<i class="bi bi-circle"></i>';
-    
+    this.onLightChange?.(this.lightEnabled);
+
+    const envEnabled = state.rendering.envLightingEnabled;
+    this.lightingManager.setEnvironmentLightingEnabled(envEnabled);
+    this.onEnvChange?.(envEnabled);
+
     // Restore model visibility
     for (const [modelId, visible] of Object.entries(state.modelVisibility)) {
       this.setModelVisibility(modelId, visible);
@@ -1121,88 +981,34 @@ export class ThreePresenter {
 
   toggleLight() {
     this.lightEnabled = this.lightingManager.toggleHeadLight();
-    this.lightButton.innerHTML = this.lightEnabled ? '<i class="bi bi-lightbulb-fill"></i>' : '<i class="bi bi-lightbulb"></i>';
     console.log(`💡 Lighting ${this.lightEnabled ? 'enabled' : 'disabled'}`);
+    this.onLightChange?.(this.lightEnabled);
   }
 
   toggleEnvLighting() {
     const enabled = this.lightingManager.toggleEnvironmentLighting();
-    this.envButton.innerHTML = enabled ? '<i class="bi bi-globe"></i>' : '<i class="bi bi-circle"></i>';
     console.log(`🌍 Environment lighting ${enabled ? 'enabled' : 'disabled'}`);
+    this.onEnvChange?.(enabled);
   }
 
-  /**
-   * Show or hide the annotation button
-   */
-  setAnnotationButtonVisible(visible: boolean) {
-    this.annotationButton.style.display = visible ? 'flex' : 'none';
-    // Exit picking mode when hiding the button
-    if (!visible && this.isPickingMode) {
-      this.exitPickingMode();
-    }
-  }
 
-  /**
-   * Show or hide a specific UI button
-   * @param buttonName - Name of the button: 'home', 'light', 'lightPosition', 'env', 'screenshot', 'camera', 'annotation'
-   * @param visible - true to show, false to hide
-   */
-  setButtonVisible(buttonName: string, visible: boolean) {
-    const buttonMap: { [key: string]: HTMLButtonElement } = {
-      home: this.homeButton,
-      light: this.lightButton,
-      lightPosition: this.lightPositionButton,
-      env: this.envButton,
-      screenshot: this.screenshotButton,
-      camera: this.cameraButton,
-      annotation: this.annotationButton
-    };
-
-    const button = buttonMap[buttonName];
-    if (button) {
-      button.style.display = visible ? 'flex' : 'none';
-      // Exit picking mode when hiding annotation button
-      if (buttonName === 'annotation' && !visible && this.isPickingMode) {
-        this.exitPickingMode();
-      }
-    } else {
-      console.warn(`Unknown button name: ${buttonName}. Valid options: ${Object.keys(buttonMap).join(', ')}`);
-    }
-  }
-
-  /**
-   * Show or hide all UI buttons at once
-   */
-  setAllButtonsVisible(visible: boolean) {
-    this.homeButton.style.display = visible ? 'flex' : 'none';
-    this.lightButton.style.display = visible ? 'flex' : 'none';
-    this.lightPositionButton.style.display = visible ? 'flex' : 'none';
-    this.envButton.style.display = visible ? 'flex' : 'none';
-    this.screenshotButton.style.display = visible ? 'flex' : 'none';
-    this.cameraButton.style.display = visible ? 'flex' : 'none';
-    this.annotationButton.style.display = visible ? 'flex' : 'none';
-    
-    if (!visible && this.isPickingMode) {
-      this.exitPickingMode();
-    }
-  }
 
   toggleCameraMode() {
     if (!this.orthographicCamera) return;
-    
+
     // Use camera manager to toggle camera mode
     this.camera = this.cameraManager.toggleCameraMode(this.controls);
     this.isOrthographic = this.cameraManager.isOrthographicMode();
-    
+
     // Update button opacity
     if (this.isOrthographic) {
-      this.cameraButton.style.opacity = '0.7';
       console.log('📦 Switched to orthographic camera');
     } else {
-      this.cameraButton.style.opacity = '1';
       console.log('📐 Switched to perspective camera');
     }
-    
+
+    this.onCameraModeChange?.(this.isOrthographic);
+
     // Dispose and recreate viewport gizmo with the new camera
     this.recreateViewportGizmo();
   }
@@ -1218,7 +1024,7 @@ export class ThreePresenter {
       }
       this.viewportGizmo = null;
     }
-    
+
     // Create new gizmo with current camera
     try {
       const { ViewportGizmo } = await import('three-viewport-gizmo');
@@ -1238,17 +1044,17 @@ export class ThreePresenter {
   takeScreenshot() {
     // Render the current frame to ensure we have the latest state
     this.renderer.render(this.scene, this.camera);
-    
+
     // Get the canvas data as a data URL (PNG format)
     const dataURL = this.renderer.domElement.toDataURL('image/png');
-    
+
     // Create a temporary link element to trigger download
     const link = document.createElement('a');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     link.download = `screenshot-${timestamp}.png`;
     link.href = dataURL;
     link.click();
-    
+
     console.log('📸 Screenshot captured and downloaded');
   }
 
@@ -1269,7 +1075,7 @@ export class ThreePresenter {
     const divisions = Math.max(10, Math.min(50, Math.floor(size / 0.1))); // Adaptive divisions
     const colorCenterLine = 0xdddddd;
     const colorGrid = 0x888888;
-    
+
     this.ground = new THREE.GridHelper(size, divisions, colorCenterLine, colorGrid);
     // GridHelper is created in XZ plane by default, which is what we want (y=0)
     this.scene.add(this.ground);

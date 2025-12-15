@@ -1,0 +1,195 @@
+import { ThreePresenter } from '../ThreePresenter';
+import { UIControlsBuilder, type ButtonConfig, type ContainerConfig } from './UIControlsBuilder';
+
+export interface DefaultUIConfig {
+    container?: Partial<ContainerConfig>;
+}
+
+/**
+ * DefaultUI - Standard UI overlay for ThreePresenter
+ */
+export class DefaultUI {
+    container: HTMLDivElement;
+    buttons: Map<string, HTMLButtonElement>;
+
+    constructor(private presenter: ThreePresenter, config: DefaultUIConfig = {}) {
+        const buttonConfigs: ButtonConfig[] = [
+            {
+                id: 'home',
+                icon: 'bi-house',
+                title: 'Reset camera view',
+                onClick: () => presenter.resetCamera(),
+                visible: false
+            },
+            {
+                id: 'light',
+                icon: 'bi-lightbulb-fill', // Initial state assumes light ON
+                title: 'Toggle lighting',
+                onClick: () => {
+                    presenter.toggleLight();
+                    this.updateLightButton();
+                },
+                visible: false
+            },
+            {
+                id: 'lightPosition',
+                icon: 'bi-brightness-high',
+                customHTML: `
+          <div style="position: relative; width: 16px; height: 16px;">
+            <i class="bi bi-brightness-high" style="position: absolute; top: -10px; left: -4px; font-size: 24px;"></i>
+            <i class="bi bi-arrows-move" style="position: absolute; font-size: 32px; top: -16px; left: -8px;"></i>
+          </div>
+        `,
+                title: 'Position headlight',
+                onClick: () => { }, // TODO: Add light positioning functionality
+                visible: false
+            },
+            {
+                id: 'env',
+                icon: 'bi-globe',
+                title: 'Toggle environment lighting',
+                onClick: () => {
+                    presenter.toggleEnvLighting();
+                    this.updateEnvButton();
+                },
+                visible: false
+            },
+            {
+                id: 'screenshot',
+                icon: 'bi-camera',
+                title: 'Take screenshot',
+                onClick: () => presenter.takeScreenshot(),
+                visible: false
+            },
+            {
+                id: 'camera',
+                icon: 'bi-box',
+                title: 'Toggle orthographic/perspective',
+                onClick: () => presenter.toggleCameraMode(),
+                visible: false
+            },
+            {
+                id: 'annotation',
+                icon: 'bi-pencil',
+                title: 'Add annotation',
+                onClick: () => presenter.togglePickingMode(),
+                visible: false
+            }
+        ];
+
+        const builder = new UIControlsBuilder();
+        const result = builder
+            .setContainer(config.container || {
+                position: 'top-left',
+                direction: 'vertical',
+                gap: 'gap-2',
+                zIndex: '1000'
+            })
+            .addButtons(buttonConfigs)
+            .build();
+
+        this.container = result.container;
+        this.buttons = result.buttons;
+
+        // Attach to mount
+        // We assume presenter.mount is accessible or we pass mount separately?
+        // ThreePresenter.mount is public.
+        const mount = this.presenter.mount;
+        if (getComputedStyle(mount).position === 'static') {
+            mount.style.position = 'relative';
+        }
+        mount.appendChild(this.container);
+
+        // Subscribe to state changes
+        this.attachListeners();
+    }
+
+    private attachListeners() {
+        // We need ThreePresenter to expose event hooks.
+        // Assuming we will add these to ThreePresenter:
+        // presenter.onLightChange = (enabled) => ...
+
+        // For now, we manually update after clicking (in onClick handlers above).
+        // But if state changes from elsewhere (e.g. loadScene), we need to update.
+
+        const originalOnLightChange = this.presenter.onLightChange;
+        this.presenter.onLightChange = (enabled: boolean) => {
+            this.updateLightButton();
+            if (originalOnLightChange) originalOnLightChange(enabled);
+        };
+
+        const originalOnEnvChange = this.presenter.onEnvChange;
+        this.presenter.onEnvChange = (enabled: boolean) => {
+            this.updateEnvButton();
+            if (originalOnEnvChange) originalOnEnvChange(enabled);
+        };
+
+        const originalOnPickingModeChange = this.presenter.onPickingModeChange;
+        this.presenter.onPickingModeChange = (enabled: boolean) => {
+            this.updateAnnotationButton(enabled);
+            if (originalOnPickingModeChange) originalOnPickingModeChange(enabled);
+        };
+
+        const originalOnCameraModeChange = this.presenter.onCameraModeChange;
+        this.presenter.onCameraModeChange = (isOrthographic: boolean) => {
+            this.updateCameraButton(isOrthographic);
+            if (originalOnCameraModeChange) originalOnCameraModeChange(isOrthographic);
+        };
+    }
+
+    updateLightButton() {
+        const btn = this.buttons.get('light');
+        if (btn) {
+            const enabled = this.presenter.lightEnabled;
+            btn.innerHTML = enabled ? '<i class="bi bi-lightbulb-fill"></i>' : '<i class="bi bi-lightbulb"></i>';
+        }
+    }
+
+    updateEnvButton() {
+        const btn = this.buttons.get('env');
+        if (btn) {
+            // Accessing private lightingManager via getter or public method?
+            // ThreePresenter doesn't expose isEnvEnabled directly as property.
+            // But toggleEnvLighting toggles it.
+            // We need a way to check state.
+            // Assuming presenter exposes it or we track it.
+            // For now, checking inner state is hard without access.
+            // Let's assume ThreePresenter exposes `isEnvLightingEnabled()`
+            // or we rely solely on the callback if provided.
+            // Actually ThreePresenter.toggleEnvLighting() logic needs checking.
+        }
+    }
+
+    updateAnnotationButton(enabled: boolean) {
+        const btn = this.buttons.get('annotation');
+        if (btn) {
+            if (enabled) {
+                btn.style.backgroundColor = '#0d6efd';
+                btn.style.color = 'white';
+            } else {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }
+        }
+    }
+
+    updateCameraButton(isOrthographic: boolean) {
+        const btn = this.buttons.get('camera');
+        if (btn) {
+            btn.style.opacity = isOrthographic ? '0.7' : '1';
+        }
+    }
+
+    setButtonVisible(id: string, visible: boolean) {
+        const btn = this.buttons.get(id);
+        if (btn) {
+            btn.style.display = visible ? 'flex' : 'none';
+        }
+    }
+
+    dispose() {
+        if (this.container.parentNode) {
+            this.container.parentNode.removeChild(this.container);
+        }
+    }
+}

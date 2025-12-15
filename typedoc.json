@@ -1,5 +1,7 @@
 {
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": [
+    "src/index.ts"
+  ],
   "out": "docs/api",
   "name": "ThreePresenter API Documentation",
   "includeVersion": true,
@@ -11,7 +13,18 @@
     "includeGroups": true
   },
   "categorizeByGroup": true,
-  "groupOrder": ["Classes", "Interfaces", "Types", "*"],
-  "sort": ["source-order"],
+  "groupOrder": [
+    "Classes",
+    "Interfaces",
+    "Types",
+    "*"
+  ],
+  "sort": [
+    "source-order"
+  ],
+  "navigationLinks": {
+    "Home": "https://cnr-isti-vclab.github.io/ThreePresenter/",
+    "GitHub": "https://github.com/cnr-isti-vclab/ThreePresenter"
+  },
   "plugin": []
 }
