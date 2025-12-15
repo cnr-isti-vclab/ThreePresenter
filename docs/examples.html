@@ -16,7 +16,7 @@
   <!-- Header -->
   <div class="header">
     <h1>ThreePresenter Examples</h1>
-    <p>Progressive tutorials from basic to advanced usage</p>
+    <p>Self-contained examples from minimal to advanced usage</p>
     <div class="nav-links">
       <a href="index.html" class="nav-link">
         <i class="bi bi-house-fill"></i> Home
@@ -42,51 +42,140 @@
         <span class="difficulty easy">Easy</span>
       </div>
       <p class="example-description">
-        The simplest possible setup - just create a viewer and load a 3D model. 
-        This is a complete, self-contained HTML file with everything you need to get started.
+        The absolute minimum code to load a 3D model - just 10 lines of JavaScript. 
+        Perfect for getting started or embedding in existing pages.
       </p>
-        <div>
-          <div class="code-wrapper">
-            <div class="code-header">
-              <span class="code-title">
-                <i class="bi bi-file-earmark-code"></i>
-                example1-minimal.html
-              </span>
-              <button class="btn btn-sm btn-primary" onclick="copyCode('code1')">
-                <i class="bi bi-clipboard"></i> Copy
-              </button>
-            </div>
-            <div class="code-block">
-              <pre id="code1"><code>Loading example code...</code></pre>
-            </div>
+      <div>
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span class="code-title">
+              <i class="bi bi-file-earmark-code"></i>
+              01-minimal.html
+            </span>
+            <button class="btn btn-sm btn-primary" onclick="copyCode('code1')">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
           </div>
-          
-          <div class="key-points">
-            <h4><i class="bi bi-lightbulb"></i> Key Points</h4>
-            <ul>
-              <li>Import maps for Three.js dependencies from CDN</li>
-              <li>Import ThreePresenter as ES module</li>
-              <li>Create viewer with container element ID</li>
-              <li>Load model with <code>loadScene()</code> method</li>
-              <li>Optional: adjust model rotation to fix orientation</li>
-            </ul>
+          <div class="code-block">
+            <pre id="code1"><code>Loading example code...</code></pre>
           </div>
+        </div>
+        
+        <div class="key-points">
+          <h4><i class="bi bi-lightbulb"></i> Key Points</h4>
+          <ul>
+            <li>Import maps for Three.js from CDN</li>
+            <li>ES module import for ThreePresenter</li>
+            <li>Single model loading with defaults</li>
+            <li>No UI controls - pure 3D viewer</li>
+          </ul>
+        </div>
 
-          <div class="mt-3">
-            <a href="example1-minimal.html" target="_blank" class="btn btn-primary">
-              <i class="bi bi-box-arrow-up-right"></i>
-              Open Live Example
-            </a>
-          </div>
+        <div class="mt-3">
+          <a href="examples/01-minimal.html" target="_blank" class="btn btn-primary">
+            <i class="bi bi-box-arrow-up-right"></i>
+            Open Live Example
+          </a>
         </div>
       </div>
     </div>
 
-    <!-- Placeholder for more examples -->
-    <div class="example-section text-center p-5">
-      <i class="bi bi-hourglass-split fs-1 text-primary"></i>
-      <h3 class="text-secondary mt-3">More Examples Coming Soon</h3>
-      <p class="text-muted">We're adding more progressive examples to help you master ThreePresenter</p>
+    <!-- Example 2: All UI Controls -->
+    <div class="example-section" style="display: block; visibility: visible;">
+      <div class="example-header">
+        <div class="example-title">
+          <span class="example-number">2</span>
+          <h2>All UI Controls</h2>
+        </div>
+        <span class="difficulty easy">Easy</span>
+      </div>
+      <p class="example-description">
+        Demonstrates all available UI buttons and controls. 
+        Learn what features are built-in and how to enable them.
+      </p>
+      <div>
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span class="code-title">
+              <i class="bi bi-file-earmark-code"></i>
+              02-all-controls.html
+            </span>
+            <button class="btn btn-sm btn-primary" onclick="copyCode('code2')">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+          </div>
+          <div class="code-block">
+            <pre id="code2"><code>Loading example code...</code></pre>
+          </div>
+        </div>
+        
+        <div class="key-points">
+          <h4><i class="bi bi-lightbulb"></i> Key Points</h4>
+          <ul>
+            <li>🏠 Home - reset camera view</li>
+            <li>💡 Lighting toggle</li>
+            <li>🌍 Environment lighting (HDRI)</li>
+            <li>📸 Screenshot capture</li>
+            <li>📦 Camera mode switching (perspective/orthographic)</li>
+            <li>📍 Annotation mode</li>
+          </ul>
+        </div>
+
+        <div class="mt-3">
+          <a href="examples/02-all-controls.html" target="_blank" class="btn btn-primary">
+            <i class="bi bi-box-arrow-up-right"></i>
+            Open Live Example
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Example 3: PLY with Material -->
+    <div class="example-section" style="display: block; visibility: visible;">
+      <div class="example-header">
+        <div class="example-title">
+          <span class="example-number">3</span>
+          <h2>PLY with Custom Material</h2>
+        </div>
+        <span class="difficulty medium">Medium</span>
+      </div>
+      <p class="example-description">
+        Load PLY files with custom material properties. 
+        Perfect for point clouds, custom styling, and material workflows.
+      </p>
+      <div>
+        <div class="code-wrapper">
+          <div class="code-header">
+            <span class="code-title">
+              <i class="bi bi-file-earmark-code"></i>
+              03-ply-material.html
+            </span>
+            <button class="btn btn-sm btn-primary" onclick="copyCode('code3')">
+              <i class="bi bi-clipboard"></i> Copy
+            </button>
+          </div>
+          <div class="code-block">
+            <pre id="code3"><code>Loading example code...</code></pre>
+          </div>
+        </div>
+        
+        <div class="key-points">
+          <h4><i class="bi bi-lightbulb"></i> Key Points</h4>
+          <ul>
+            <li>Material property overrides (color, metalness, roughness)</li>
+            <li>Works with PLY, GLB, GLTF formats</li>
+            <li>Fallback handling for missing files</li>
+            <li>Custom background colors</li>
+          </ul>
+        </div>
+
+        <div class="mt-3">
+          <a href="examples/03-ply-material.html" target="_blank" class="btn btn-primary">
+            <i class="bi bi-box-arrow-up-right"></i>
+            Open Live Example
+          </a>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -122,17 +211,32 @@
       });
     }
 
-    // Load example code from file
+    // Load example code from files
     async function loadExampleCode() {
-      try {
-        const response = await fetch('example1-minimal.html');
-        const code = await response.text();
-        const codeElement = document.querySelector('#code1 code');
-        // Escape HTML for display and add API links
-        codeElement.innerHTML = linkifyAPITerms(escapeHtml(code));
-      } catch (error) {
-        console.error('Failed to load example code:', error);
-        document.querySelector('#code1 code').textContent = 'Failed to load example code.';
+      const examples = [
+        { id: 'code1', file: 'examples/01-minimal.html' },
+        { id: 'code2', file: 'examples/02-all-controls.html' },
+        { id: 'code3', file: 'examples/03-ply-material.html' }
+      ];
+
+      for (const example of examples) {
+        try {
+          const response = await fetch(example.file);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const code = await response.text();
+          const codeElement = document.querySelector(`#${example.id} code`);
+          if (codeElement) {
+            codeElement.innerHTML = linkifyAPITerms(escapeHtml(code));
+          }
+        } catch (error) {
+          console.error(`Failed to load ${example.file}:`, error);
+          const codeElement = document.querySelector(`#${example.id} code`);
+          if (codeElement) {
+            codeElement.textContent = `Error loading example: ${error.message}\n\nPlease ensure you're viewing this page through a web server (e.g., npx serve) and not directly from the file system.`;
+          }
+        }
       }
     }
 
@@ -147,18 +251,10 @@
       const apiLinks = {
         'ThreePresenter': 'api/classes/ThreePresenter.html',
         'loadScene': 'api/classes/ThreePresenter.html#loadScene',
-        'loadModel': 'api/classes/ModelLoader.html#loadModel',
+        'setButtonVisible': 'api/classes/ThreePresenter.html#setButtonVisible',
         'SceneDescription': 'api/interfaces/SceneDescription.html',
         'ModelDefinition': 'api/interfaces/ModelDefinition.html',
-        'CameraConfig': 'api/interfaces/CameraConfig.html',
-        'LightingConfig': 'api/interfaces/LightingConfig.html',
         'EnvironmentSettings': 'api/interfaces/EnvironmentSettings.html',
-        'AnnotationManager': 'api/classes/AnnotationManager.html',
-        'CameraManager': 'api/classes/CameraManager.html',
-        'LightingManager': 'api/classes/LightingManager.html',
-        'ModelLoader': 'api/classes/ModelLoader.html',
-        'getState': 'api/classes/ThreePresenter.html#getState',
-        'dispose': 'api/classes/ThreePresenter.html#dispose',
       };
 
       // Replace terms with links (match whole words only)
@@ -171,7 +267,10 @@
     }
 
     // Load code when page loads
-    document.addEventListener('DOMContentLoaded', loadExampleCode);
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('Page loaded, found', document.querySelectorAll('.example-section').length, 'example sections');
+      loadExampleCode();
+    });
   </script>
 </body>
 </html>

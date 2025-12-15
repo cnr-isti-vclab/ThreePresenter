@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Example 3 - PLY with Custom Material</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui; background: #1a1a1a; }
+    #viewer { width: 100vw; height: 100vh; }
+    #info { 
+      position: absolute; top: 20px; left: 20px; 
+      background: rgba(0,0,0,0.85); color: white; 
+      padding: 15px; border-radius: 8px; 
+      font-size: 13px; line-height: 1.6; max-width: 300px;
+    }
+    #info h3 { font-size: 16px; margin-bottom: 8px; color: #ff6b6b; }
+    #info code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="info">
+    <h3>🎨 PLY + Custom Material</h3>
+    <p>Loading PLY model with material override:</p>
+    <p><code>color: "#ff4444"</code></p>
+    <p><code>metalness: 0.2</code></p>
+    <p><code>roughness: 0.7</code></p>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { ThreePresenter } from '../dist/three-presenter.js';
+
+    const presenter = new ThreePresenter('viewer');
+
+    presenter.loadScene({
+      models: [{
+        id: 'ply-model',
+        file: 'bunny.ply',
+        material: {
+          color: '#ff4444',
+          metalness: 0.2,
+          roughness: 0.7,
+          flatShading: false
+        }
+      }],
+      environment: { showGround: true, background: '#1a1a1a' }
+    }).then(() => {
+      presenter.setButtonVisible('home', true);
+      presenter.setButtonVisible('light', true);
+      console.log('✅ PLY loaded with custom red material');
+    }).catch(err => {
+      console.warn('Note: bunny.ply not found, trying venus.glb instead');
+      // Fallback to GLB if PLY not available
+      presenter.loadScene({
+        models: [{
+          id: 'fallback',
+          file: 'venus.glb',
+          material: { color: '#ff4444', metalness: 0.2, roughness: 0.7 }
+        }],
+        environment: { showGround: true, background: '#1a1a1a' }
+      }).then(() => {
+        presenter.setButtonVisible('home', true);
+        presenter.setButtonVisible('light', true);
+      });
+    });
+  </script>
+</body>
+</html>
