@@ -130,7 +130,7 @@ export class ModelLoader {
         metalness: config.defaultMaterial?.metalness,
         roughness: config.defaultMaterial?.roughness
       }
-    
+
     };
     if (renderer) this.renderer = renderer;
   }
@@ -151,7 +151,7 @@ export class ModelLoader {
   ): Promise<LoadResult> {
     // Detect format from URL
     const format = this.detectFormat(url);
-    
+
     // For NXS/NXZ files, use direct URL loading (streaming)
     if (format === 'nxs' || format === 'nxz') {
       const object = await this.parseNexus(url, materialOverrides as any);
@@ -161,17 +161,17 @@ export class ModelLoader {
         byteSize: 0 // NXS is streamed, size unknown
       };
     }
-    
+
     // For other formats, fetch the file
     const response = await fetch(url, { credentials: 'include' });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to load model from ${url}: HTTP ${response.status}`);
     }
 
     // Get content length for progress tracking
     const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
-    
+
     // Read the response with progress tracking
     const reader = response.body?.getReader();
     if (!reader) {
@@ -201,7 +201,7 @@ export class ModelLoader {
       buffer.set(chunk, position);
       position += chunk.length;
     }
-    
+
     // Load from buffer
     return this.loadFromBuffer(buffer.buffer, format, materialOverrides, url);
   }
@@ -257,7 +257,7 @@ export class ModelLoader {
    */
   detectFormat(filename: string): 'ply' | 'gltf' | 'glb' | 'nxs' | 'nxz' {
     const lower = filename.toLowerCase();
-    
+
     if (lower.endsWith('.ply')) {
       return 'ply';
     } else if (lower.endsWith('.glb')) {
@@ -269,7 +269,7 @@ export class ModelLoader {
     } else if (lower.endsWith('.nxz')) {
       return 'nxz';
     }
-    
+
     throw new Error(`Cannot detect format from filename: ${filename}`);
   }
 
@@ -291,7 +291,7 @@ export class ModelLoader {
 
     // Parse geometry
     const geometry = this.plyLoader.parse(buffer);
-    
+
     // Compute normals if enabled
     if (this.config.autoComputeNormals) {
       geometry.computeVertexNormals();
@@ -353,28 +353,25 @@ export class ModelLoader {
         buffer,
         '', // Resource path (not needed for buffer parsing)
         (gltf: any) => {
-          const group = new THREE.Group();
-          
-          // Clone all meshes from the scene
-          gltf.scene.traverse((child: any) => {
-            if ((child as THREE.Mesh).isMesh) {
-              const clonedChild = child.clone();
+          // Use the original scene group to preserve hierarchy and transforms
+          const group = gltf.scene;
 
-              // Apply material overrides if specified
-              if (materialOverrides) {
+          // Apply material overrides if specified
+          if (materialOverrides) {
+            group.traverse((child: any) => {
+              if ((child as THREE.Mesh).isMesh) {
+                // Apply material overrides
                 if ((materialOverrides as any).isMaterial) {
-                  (clonedChild as THREE.Mesh).material = materialOverrides as THREE.Material;
-                } else if ((clonedChild as THREE.Mesh).material) {
+                  (child as THREE.Mesh).material = materialOverrides as THREE.Material;
+                } else if ((child as THREE.Mesh).material) {
                   this.applyMaterialOverrides(
-                    (clonedChild as THREE.Mesh).material as THREE.Material,
+                    (child as THREE.Mesh).material as THREE.Material,
                     materialOverrides as MaterialProperties
                   );
                 }
               }
-
-              group.add(clonedChild);
-            }
-          });
+            });
+          }
 
           // Note: GLTF/GLB loader does not perform normalization or centering.
           // The returned group preserves transforms defined in the file. Use
@@ -532,7 +529,7 @@ export class ModelLoader {
             console.warn('Error applying material overrides on nexus update', e);
           }
         },
-        onProgress: () => {},
+        onProgress: () => { },
         onError: (error: any) => {
           if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
           console.error('❌ Nexus model failed to load:', url, error);
