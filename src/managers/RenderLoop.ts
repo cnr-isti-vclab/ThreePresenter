@@ -1,5 +1,26 @@
 /**
  * RenderLoop - Manages the animation loop using requestAnimationFrame
+ * 
+ * This class encapsulates the browser's requestAnimationFrame loop, providing:
+ * - Efficient frame scheduling and control
+ * - Delta time calculations for smooth animations
+ * - Callback management for multiple subscribers
+ * - Automatic frame rate handling
+ * 
+ * @example
+ * ```typescript
+ * const renderLoop = new RenderLoop();
+ * 
+ * renderLoop.onFrame((time, delta) => {
+ *   renderer.render(scene, camera);
+ * });
+ * 
+ * renderLoop.start();
+ * // Later...
+ * renderLoop.stop();
+ * ```
+ * 
+ * @see {@link ThreePresenter} for usage in the main presenter
  */
 export class RenderLoop {
     private isRunning: boolean = false;

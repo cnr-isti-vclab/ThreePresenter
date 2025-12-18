@@ -127,8 +127,8 @@ export class ModelLoader {
       defaultMaterial: {
         color: config.defaultMaterial?.color ?? 0xdddddd,
         flatShading: config.defaultMaterial?.flatShading ?? true,
-        metalness: config.defaultMaterial?.metalness,
-        roughness: config.defaultMaterial?.roughness
+        metalness: config.defaultMaterial?.metalness ?? 0.3,
+        roughness: config.defaultMaterial?.roughness ?? 0.5
       }
 
     };
@@ -396,15 +396,15 @@ export class ModelLoader {
     if (materialOverrides && (materialOverrides as any).isMaterial) {
       finalMaterial = materialOverrides as THREE.Material;
     } else {
-      const materialProps = this.mergeMaterialProperties(
-        this.config.defaultMaterial,
-        materialOverrides as MaterialProperties
-      );
+      // const materialProps = this.mergeMaterialProperties(
+      //   this.config.defaultMaterial,
+      //   materialOverrides as MaterialProperties
+      // );
       const materialConfig: any = {
-        color: materialProps.color,
-        flatShading: materialProps.flatShading,
-        metalness: materialProps.metalness,
-        roughness: materialProps.roughness
+        color: 0xffffff, 
+        flatShading: false,
+        metalness: 0.3,
+        roughness: 0.5
       };
       
       // Apply texture map if it was successfully loaded

@@ -7,10 +7,45 @@ export interface DefaultUIConfig {
 
 /**
  * DefaultUI - Standard UI overlay for ThreePresenter
+ * 
+ * Provides a ready-to-use UI control panel with buttons for common 3D viewer operations.
+ * This class demonstrates how to build a UI on top of ThreePresenter without tight coupling.
+ * 
+ * Features:
+ * - Home/Reset button - returns camera to default view
+ * - Light toggle - enable/disable head lighting
+ * - Light position control - adjust light direction relative to camera
+ * - Environment lighting - toggle HDRI/environment map
+ * - Annotation toggle - enable/disable picking mode
+ * - Camera mode switch - toggle between perspective and orthographic
+ * - Screenshot capture - save current view as image
+ * 
+ * The UI responds to state changes via callbacks, keeping it in sync with the
+ * presenter's internal state. Buttons can be individually hidden/shown via
+ * `setButtonVisible()`.
+ * 
+ * @example
+ * ```typescript
+ * const presenter = new ThreePresenter(container);
+ * const ui = new DefaultUI(presenter, {
+ *   container: {
+ *     position: 'top-left',
+ *     gap: 12
+ *   }
+ * });
+ * 
+ * // Show only specific buttons
+ * ui.setButtonVisible('home', true);
+ * ui.setButtonVisible('annotation', false);
+ * ```
+ * 
+ * @see {@link UIControlsBuilder} for button creation details
+ * @see {@link ThreePresenter} for the main presenter class
  */
 export class DefaultUI {
     container: HTMLDivElement;
     buttons: Map<string, HTMLButtonElement>;
+    private envLightingEnabled: boolean = true;
 
     constructor(private presenter: ThreePresenter, config: DefaultUIConfig = {}) {
         const buttonConfigs: ButtonConfig[] = [
@@ -120,6 +155,7 @@ export class DefaultUI {
 
         const originalOnEnvChange = this.presenter.onEnvChange;
         this.presenter.onEnvChange = (enabled: boolean) => {
+            this.envLightingEnabled = enabled;
             this.updateEnvButton();
             if (originalOnEnvChange) originalOnEnvChange(enabled);
         };
@@ -148,15 +184,7 @@ export class DefaultUI {
     updateEnvButton() {
         const btn = this.buttons.get('env');
         if (btn) {
-            // Accessing private lightingManager via getter or public method?
-            // ThreePresenter doesn't expose isEnvEnabled directly as property.
-            // But toggleEnvLighting toggles it.
-            // We need a way to check state.
-            // Assuming presenter exposes it or we track it.
-            // For now, checking inner state is hard without access.
-            // Let's assume ThreePresenter exposes `isEnvLightingEnabled()`
-            // or we rely solely on the callback if provided.
-            // Actually ThreePresenter.toggleEnvLighting() logic needs checking.
+            btn.innerHTML = this.envLightingEnabled ? '<i class="bi bi-globe"></i>' : '<i class="bi bi-globe-alt"></i>';
         }
     }
 
@@ -184,6 +212,8 @@ export class DefaultUI {
         const btn = this.buttons.get(id);
         if (btn) {
             btn.style.display = visible ? 'flex' : 'none';
+        } else {
+            console.warn(`DefaultUI: No button found with id '${id}'`);
         }
     }
 

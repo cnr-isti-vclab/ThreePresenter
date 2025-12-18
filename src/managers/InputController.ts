@@ -1,19 +1,55 @@
 import * as THREE from 'three';
 
+/**
+ * Configuration for InputController initialization
+ */
 export interface InputControllerConfig {
+  /** DOM element to attach input listeners to */
   domElement: HTMLElement;
+  /** Callback to get current camera for raycasting */
   getCamera: () => THREE.Camera;
+  /** Callback to get all selectable models in the scene */
   getModels: () => THREE.Object3D[];
+  /** Callback to get all annotation markers in the scene */
   getAnnotations: () => THREE.Object3D[]; // Returns markers
+  /** Called when user double-clicks on a 3D model */
   onModelDoubleClick: (point: THREE.Vector3) => void;
+  /** Called when user clicks on an annotation marker */
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
+  /** Called when user clicks on empty space (background) */
   onBackgroundClick: (isMultiSelect: boolean) => void;
 }
 
 /**
  * InputController - Handles mouse/touch input and raycasting
  * 
- * Decouples input handling from the main presenter.
+ * This class provides a decoupled input handling system that:
+ * - Performs raycasting against 3D models and annotations
+ * - Detects clicks, double-clicks, and multi-select (Ctrl/Cmd + click)
+ * - Manages picking mode (crosshair cursor for point selection)
+ * - Handles window resizing for accurate picking
+ * 
+ * The controller communicates via callbacks, making it independent from
+ * the main presenter and suitable for testing and custom implementations.
+ * 
+ * @example
+ * ```typescript
+ * const controller = new InputController({
+ *   domElement: canvas,
+ *   getCamera: () => camera,
+ *   getModels: () => [model1, model2],
+ *   getAnnotations: () => annotations.children,
+ *   onModelDoubleClick: (point) => console.log('Clicked at', point),
+ *   onAnnotationClick: (obj, isMulti) => handleAnnotationSelect(obj),
+ *   onBackgroundClick: () => deselectAll()
+ * });
+ * 
+ * // For creating new annotations via picking
+ * controller.setPickingMode(true);
+ * ```
+ * 
+ * @see {@link AnnotationManager} for annotation marker management
+ * @see {@link ThreePresenter} for integration
  */
 export class InputController {
   private raycaster = new THREE.Raycaster();
