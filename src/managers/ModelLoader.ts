@@ -222,10 +222,17 @@ export class ModelLoader {
     url?: string
   ): Promise<LoadResult> {
     let object: THREE.Object3D;
+    
+    // Extract base directory from URL if provided
+    let baseDir: string | undefined;
+    if (url) {
+      const lastSlash = url.lastIndexOf('/');
+      baseDir = lastSlash !== -1 ? url.substring(0, lastSlash + 1) : undefined;
+    }
 
     switch (format) {
       case 'ply':
-        object = await this.parsePLY(buffer, materialOverrides as any);
+        object = await this.parsePLY(buffer, materialOverrides as any, baseDir);
         break;
       case 'gltf':
       case 'glb':
@@ -277,11 +284,13 @@ export class ModelLoader {
    * Parse PLY format buffer
    * @param buffer ArrayBuffer containing PLY data
    * @param materialOverrides Optional material overrides
+   * @param baseDir Optional base directory for resolving relative texture paths
    * @returns Promise resolving to Three.js Mesh
    */
   private async parsePLY(
     buffer: ArrayBuffer,
-    materialOverrides?: MaterialProperties | THREE.Material
+    materialOverrides?: MaterialProperties | THREE.Material,
+    baseDir?: string
   ): Promise<THREE.Mesh> {
     // Lazy load PLYLoader
     if (!this.plyLoader) {
@@ -291,6 +300,91 @@ export class ModelLoader {
 
     // Parse geometry
     const geometry = this.plyLoader.parse(buffer);
+
+    // print the content of the attribute texturename if present
+    if (geometry.attributes.texturename) {
+      const texturenameAttr = geometry.attributes.texturename;
+      console.log('📦 PLY Geometry Attribute "texturename":', texturenameAttr);
+    }
+    
+    // Parse header for possible texture name (optional)
+    // From the buffer we search inside the header for the lines that start with "comment" and we log them
+    const textDecoder = new TextDecoder();
+    const text = textDecoder.decode(buffer);
+    const headerEnd = text.indexOf('end_header');
+    let foundTextureFile: string | null = null;
+    if (headerEnd !== -1) {
+      const headerText = text.substring(0, headerEnd);
+      const headerLines = headerText.split('\n');
+      console.log('📄 📄 PLY Header Comments:');
+      for (const line of headerLines) {
+        if (line.startsWith('comment')) {
+        console.log(`  - ${line}`);
+          // if after the 'comment' keyword there is the 'TextureFile' keyword, 
+          // save the subsequent texture file name
+          const textureFileMatch = line.match(/comment\s+TextureFile\s+(.+)/);
+          if (textureFileMatch && textureFileMatch[1]) {
+            foundTextureFile = textureFileMatch[1].trim();
+            console.log(`  - TextureFile: ${foundTextureFile}`);
+          }
+        }
+      }
+    }
+    
+    // If we found a texture file name, try to load it and apply to the geometry
+    let textureMap: THREE.Texture | null = null;
+    if (foundTextureFile) {
+      try {
+        // Determine texture URL
+        let textureUrl: string;
+        if (foundTextureFile.startsWith('http') || foundTextureFile.startsWith('/')) {
+          // Absolute path or full URL
+          textureUrl = foundTextureFile;
+        } else if (baseDir) {
+          // Relative to the PLY file's directory
+          textureUrl = baseDir + foundTextureFile;
+        } else {
+          // Fallback: treat as root-relative
+          textureUrl = `/${foundTextureFile}`;
+        }
+        
+        console.log(`📸 Attempting to load texture from: ${textureUrl}`);
+        
+        // Load the texture asynchronously
+        textureMap = await new Promise((resolve, reject) => {
+          const textureLoader = new THREE.TextureLoader();
+          textureLoader.load(
+            textureUrl,
+            (texture) => {
+              console.log(`✅ Texture loaded successfully: ${foundTextureFile}`);
+              resolve(texture);
+            },
+            undefined,
+            (error) => {
+              console.warn(`⚠️ Failed to load texture: ${foundTextureFile}`, error);
+              reject(error);
+            }
+          );
+        });
+      } catch (error) {
+        console.warn(`⚠️ Could not load texture file: ${foundTextureFile}`, error);
+        textureMap = null;
+      }
+    }
+
+
+    
+    // Debug: Log all available attributes in the geometry
+    console.log('📦 PLY Geometry Attributes:');
+    console.log('  Attributes:', Object.keys(geometry.attributes));
+    for (const [attrName, attrData] of Object.entries(geometry.attributes)) {
+      const attr = attrData as any;
+      console.log(`    - ${attrName}: itemSize=${attr.itemSize}, count=${attr.count}, array=${attr.array.constructor.name}`);
+    }
+    if (geometry.morphAttributes && Object.keys(geometry.morphAttributes).length > 0) {
+      console.log('  Morph Attributes:', Object.keys(geometry.morphAttributes));
+    }
+    console.log('  Vertex Count:', geometry.attributes.position?.count || 0);
 
     // Compute normals if enabled
     if (this.config.autoComputeNormals) {
@@ -306,12 +400,20 @@ export class ModelLoader {
         this.config.defaultMaterial,
         materialOverrides as MaterialProperties
       );
-      finalMaterial = new THREE.MeshStandardMaterial({
+      const materialConfig: any = {
         color: materialProps.color,
         flatShading: materialProps.flatShading,
         metalness: materialProps.metalness,
         roughness: materialProps.roughness
-      });
+      };
+      
+      // Apply texture map if it was successfully loaded
+      if (textureMap) {
+        materialConfig.map = textureMap;
+        console.log('✨ Applied texture map to material');
+      }
+      
+      finalMaterial = new THREE.MeshStandardMaterial(materialConfig);
     }
 
     const mesh = new THREE.Mesh(geometry, finalMaterial);
