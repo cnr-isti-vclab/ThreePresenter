@@ -2,61 +2,61 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
-  workflow_dispatch:
+    branches: ["main"]  # Trigger on push to main branch
+  workflow_dispatch:  # Allow manual triggering of the workflow
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: read  # Read access to repository contents
+  pages: write  # Write access to GitHub Pages
+  id-token: write  # Write access for ID tokens
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: "pages"  # Group for concurrency control
+  cancel-in-progress: false  # Do not cancel in-progress jobs
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # Checkout the repository
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4  # Set up Node.js environment
         with:
-          node-version: "20"
-          cache: 'npm'
+          node-version: "20"  # Specify Node.js version
+          cache: 'npm'  # Enable npm caching
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci  # Install project dependencies
 
       - name: Build Library
-        run: npm run build
+        run: npm run build  # Build the library
 
       - name: Generate Docs
-        run: npm run docs
+        run: npm run docs  # Generate documentation
 
       - name: Prepare Docs Folder
         # Ensure the destination directory exists
         run: |
-          mkdir -p docs/dist
-          cp -r dist/* docs/dist/
+          mkdir -p docs/dist  # Create docs/dist directory
+          cp -r dist/* docs/dist/  # Copy built files to docs/dist
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v5  # Configure GitHub Pages
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v3  # Upload documentation as an artifact
         with:
-          path: './docs'
+          path: './docs'  # Path to the docs folder
 
   deploy:
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
+      name: github-pages  # Specify the deployment environment
+      url: ${{ steps.deployment.outputs.page_url }}  # URL of the deployed site
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
+    needs: build  # Ensure build job completes before deploying
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v4  # Deploy to GitHub Pages
