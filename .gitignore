@@ -11,6 +11,8 @@ dist/
 # Generated documentation and demo artifacts
 docs/dist/
 docs/api/
+docs/assets/large_assets/
+docs/assets/test_assets/
 
 # Editor
 .vscode/
