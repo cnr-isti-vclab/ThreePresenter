@@ -65,15 +65,6 @@ export default defineConfig({
     sourcemap: true,
     outDir: 'dist'
   },
-  resolve: {
-    alias: {
-      // Alias 'three' to a shim that provides a default export for
-      // better interop with the Nexus3D UMD/CJS bundle during debugging.
-      // Remove or make conditional before publishing if you want 'three'
-      // to remain external for library builds.
-      'three': resolve(__dirname, 'src/shims/three-default.ts')
-    }
-  },
 
   // For SSR or other non-bundled contexts, prevent Vite from treating
   // nexus3d as external so it gets processed and interop helpers are applied.
