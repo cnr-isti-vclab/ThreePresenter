@@ -496,15 +496,3 @@ export class CameraManager {
 export function createCameraManager(aspect: number): CameraManager {
   return new CameraManager(aspect);
 }
-
-/**
- * Utility function to calculate frustum size from FOV and distance
- * 
- * @param fov Field of view in degrees
- * @param distance Distance to target
- * @returns Frustum height
- */
-export function calculateFrustumSize(fov: number, distance: number): number {
-  const fovRadians = fov * (Math.PI / 180);
-  return 2 * Math.tan(fovRadians / 2) * distance;
-}

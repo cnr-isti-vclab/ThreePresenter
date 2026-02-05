@@ -98,6 +98,10 @@ export {
   formatStats
 } from './utils/GeometryUtils';
 
+// Export scale indicator
+export { ScaleIndicator } from './utils/ScaleIndicator';
+export type { ScaleIndicatorConfig } from './utils/ScaleIndicator';
+
 // Export UI controls builder
 export { UIControlsBuilder, createButton, createButtonPanel } from './ui/UIControlsBuilder';
 export { DefaultUI } from './ui/DefaultUI';
@@ -109,7 +113,7 @@ export type {
 } from './ui/UIControlsBuilder';
 
 // Export camera manager
-export { CameraManager, createCameraManager, calculateFrustumSize } from './managers/CameraManager';
+export { CameraManager, createCameraManager } from './managers/CameraManager';
 export type {
   CameraConfig,
   CameraState

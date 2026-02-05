@@ -3,6 +3,7 @@ import { AnnotationManager } from './managers/AnnotationManager';
 import type { FileUrlResolver } from './types/FileUrlResolver';
 import { StaticBaseUrlResolver } from './types/FileUrlResolver';
 import { calculateObjectStats, type GeometryStats } from './utils/GeometryUtils';
+import { ScaleIndicator } from './utils/ScaleIndicator';
 
 import { CameraManager } from './managers/CameraManager';
 import { LightingManager } from './managers/LightingManager';
@@ -92,6 +93,7 @@ export class ThreePresenter {
   currentScene: SceneDescription | null = null;
   mount: HTMLDivElement;
   ground: THREE.GridHelper | null = null;
+  scaleIndicator: ScaleIndicator | null = null;
   viewportGizmo: any = null;
   isPickingMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
@@ -184,7 +186,7 @@ export class ThreePresenter {
 
     // Lighting Manager (envMapIntensity not supported in config, handled by Presenter's loadEnvironmentMap)
     this.lightingManager = managers.lightingManager || new LightingManager(this.scene, {
-      ambientIntensity: 0.5,
+      ambientIntensity: 0.2,
       headLightIntensity: 0.8
     });
     this.lightEnabled = this.lightingManager.isHeadLightEnabled();
@@ -255,6 +257,9 @@ export class ThreePresenter {
     this.annotationManager.dispose();
     this.lightingManager.dispose();
     this.modelLoader.dispose();
+
+    // Clean up scale indicator
+    this.removeScaleIndicator();
 
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
@@ -554,7 +559,7 @@ export class ThreePresenter {
   }
 
   /**
-   * Apply environment settings (ground, background)
+   * Apply environment settings (ground, background, scale indicator)
    */
   private applyEnvironmentSettings(env: any): void {
     // Handle ground grid
@@ -566,6 +571,12 @@ export class ThreePresenter {
     // Handle background color
     if (env.background) {
       this.scene.background = new THREE.Color(env.background);
+    }
+
+    // Handle scale indicator
+    this.removeScaleIndicator();
+    if (env.scaleIndicator?.enabled) {
+      this.addScaleIndicator(env.scaleIndicator);
     }
   }
 
@@ -1071,11 +1082,18 @@ export class ThreePresenter {
     // Create a grid helper at y = 0, sized based on actual scene dimensions
     // GridHelper(size, divisions, colorCenterLine, colorGrid)
     const maxDim = Math.max(this.sceneBBoxSize.x, this.sceneBBoxSize.z);
-    const size = maxDim * 2; // Make ground 2x the scene size for context
+    const targetSize = maxDim * 2; // Make ground 2x the scene size for context
+    // targetSize is approximated size that we would like to have. 
+    // Then first we decide the size of the grid cell so that 
+    // it is some power of 10 (values <1 like 0.1, 0.01 etc. are possible)
+    const cellSize = Math.pow(10, Math.floor(Math.log10(targetSize / 10))); // Base cell size (1, 10, 100, etc.)
+    
+    const size = Math.ceil(targetSize / cellSize) * cellSize; // Round up to nearest cell size
+  
     const divisions = Math.max(10, Math.min(50, Math.floor(size / 0.1))); // Adaptive divisions
     const colorCenterLine = 0xdddddd;
     const colorGrid = 0x888888;
-
+    console.log('Adding ground grid with size:', size, 'divisions:', divisions);
     this.ground = new THREE.GridHelper(size, divisions, colorCenterLine, colorGrid);
     // GridHelper is created in XZ plane by default, which is what we want (y=0)
     this.scene.add(this.ground);
@@ -1086,6 +1104,36 @@ export class ThreePresenter {
     if (this.ground) {
       this.scene.remove(this.ground);
       this.ground = null;
+    }
+  }
+
+  private addScaleIndicator(config: any) {
+    // Default configuration for scale indicator
+    const indicatorConfig = {
+      unit: config.unit ?? 'units',
+      rulerSize: config.rulerSize ?? 1,
+      segments: config.segments ?? 10,
+      barHeight: config.barHeight,
+      textHeight: config.textHeight,
+      lightColor: config.lightColor ?? 0xffffff,
+      darkColor: config.darkColor ?? 0x000000,
+      textColor: config.textColor ?? 0x000000
+    };
+
+    this.scaleIndicator = new ScaleIndicator(this.scene, indicatorConfig);
+
+    // Position the scale indicator
+    const posX = config.posX ?? -(this.sceneBBoxSize.x / 2 + indicatorConfig.rulerSize / 2 + 0.2);
+    const posZ = config.posZ ?? -(this.sceneBBoxSize.z / 2 + 0.2);
+    this.scaleIndicator.setPosition(posX, 0, posZ);
+
+    console.log(`📏 Scale indicator added at (${posX.toFixed(2)}, 0, ${posZ.toFixed(2)})`);
+  }
+
+  private removeScaleIndicator() {
+    if (this.scaleIndicator) {
+      this.scaleIndicator.remove();
+      this.scaleIndicator = null;
     }
   }
 

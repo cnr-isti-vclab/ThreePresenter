@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scale Indicator Example</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #viewer { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="viewer"></div>
+
+<script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+    <script type="module">
+        import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
+
+        const container = document.getElementById('viewer');
+        const resolver = new StaticBaseUrlResolver('assets');
+        const presenter = new ThreePresenter({ mount: container, fileUrlResolver: resolver });
+
+        // Load scene with ground and scale indicator
+        await presenter.loadScene({
+            models: [{ id: 'model', file: 'venus.glb' }],
+            environment: {
+                showGround: true,
+                scaleIndicator: {
+                    enabled: true,
+                    unit: 'meters',
+                    rulerSize: 1,
+                    posX: 0,
+                    posZ: 0
+                }
+            }
+        });
+    </script>
+</body>
+</html>

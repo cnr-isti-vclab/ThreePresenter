@@ -87,6 +87,27 @@ export interface EnvironmentSettings {
   showGround?: boolean;
   /** Background color as hex string (e.g., "#404040") */
   background?: string;
+  /** Scale indicator configuration for measuring objects */
+  scaleIndicator?: {
+    /** Whether to show the scale indicator ruler */
+    enabled?: boolean;
+    /** Unit label (e.g., 'meters', 'cm', 'inches') */
+    unit?: string;
+    /** Size of the ruler in world units */
+    rulerSize?: number;
+    /** Number of checkerboard segments (default: 10) */
+    segments?: number;
+    /** Height of the bar (default: rulerSize/10) */
+    barHeight?: number;
+    /** X position of the ruler on the ground */
+    posX?: number;
+    /** Z position of the ruler on the ground */
+    posZ?: number;
+    /** Light square color (default: 0xffffff - white) */
+    lightColor?: number;
+    /** Dark square color (default: 0x000000 - black) */
+    darkColor?: number;
+  };
 }
 
 /**

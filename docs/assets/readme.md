@@ -5,6 +5,8 @@ venus.glb
 H. 40 L. 24 P. 31 cm Inv. Ra 52
 https://tools.wmflabs.org/reasonator/?q=Q24628970
 Numérisation 3D par scanner 3D Artec EVA et/ou Spider par IMA Solutions SARL
+License CC0 Public Domain
+Original Format was obj. 
 
 
 
