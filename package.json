@@ -18,8 +18,8 @@
   ],
   "scripts": {
     "build": "vite build && npx tsc --emitDeclarationOnly",
-    "build:demo": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/",
-    "build:all": "npm run build && npm run docs && mkdir -p docs/dist && cp -r dist/* docs/dist/",
+    "build:demo": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js",
+    "build:all": "npm run build && npm run docs && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js",
     "dev": "vite",
     "dev:docs": "node scripts/watch-and-copy.js",
     "dev:live": "node scripts/dev-serve.js",
