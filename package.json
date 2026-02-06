@@ -17,7 +17,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "vite build && tsc --emitDeclarationOnly",
+    "build": "vite build && npx tsc --emitDeclarationOnly",
     "build:demo": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/",
     "build:all": "npm run build && npm run docs && mkdir -p docs/dist && cp -r dist/* docs/dist/",
     "dev": "vite",

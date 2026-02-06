@@ -1,105 +1,46 @@
 # ThreePresenter
 
-A framework-agnostic 3D viewer library built on Three.js. 
-It aims to provide easy integration of 3D model visualization and annotation capabilities into web applications.
-It offers:
+A framework-agnostic 3D viewer library built on Three.js for web applications.
 
-- Multi-format 3D model loading (GLB, PLY, OBJ, NXS)
-- Annotation system (points, lines, areas)
-- Basic Camera controls (perspective/orthographic)
+**Features:** Multi-format model loading (GLB, PLY, OBJ, NXS) • Point annotations • Camera controls • HDRI lighting • Ground plane with scale indicator
 
-## Features
+[API Documentation](https://cnr-isti-vclab.github.io/ThreePresenter/api/) • [Live Examples](https://cnr-isti-vclab.github.io/ThreePresenter/)
 
-### Core Capabilities
-- Framework-agnostic (works with React, Vue, vanilla JS)
-- TypeScript support with full type definitions
-- Automatic model centering and scaling
-- Standard Interactive camera controls (Turntable, Zoom, Pan, Double click Recentering)
-- Environment lighting with HDRI support
-- Ground plane with customizable grid with reference scale and shadow.
+## Quick Start
 
-### Annotation System
-- Point annotations with sphere markers
- 
-### File Format Support
-- GLB/GLTF (PBR materials)
-- PLY (point clouds, meshes)
-- OBJ (with MTL materials)
-- NXS (Nexus multiresolution)
-
-## Installation
-
-### For Development (Bundler Projects)
-API Reference is available at:
-https://cnr-isti-vclab.github.io/ThreePresenter/api/index.html
-
-### Example Projects
-See the `examples/` folder for working demos:
-
-
-
-To run examples:
 ```bash
-# Build first
-npm run build
-
-# Then serve
-npx serve
-
-# Or for development
-npm run dev
+npm install three-presenter three
 ```
 
-## Architecture
+```javascript
+import { ThreePresenter } from 'three-presenter';
 
-ThreePresenter uses a modular architecture:
-
-```
-src/
-├── ThreePresenter.ts       # Main orchestrator
-├── managers/               # Subsystems
-│   ├── AnnotationManager.ts
-│   ├── CameraManager.ts
-│   ├── LightingManager.ts
-│   └── ModelLoader.ts
-├── ui/                     # UI components
-│   └── UIControlsBuilder.ts
-├── utils/                  # Utilities
-│   └── GeometryUtils.ts
-└── types/                  # Type definitions
+const viewer = new ThreePresenter({ mount: 'viewer' });
+await viewer.loadScene({
+  models: [{ id: 'model', file: 'model.glb' }],
+  environment: { showGround: true }
+});
 ```
 
 ## Development
 
-### Setup
 ```bash
 npm install
+npm run dev          # Start dev server at localhost:5173
+npm run build        # Build library
+npm run build:demo   # Build + copy to docs/dist for examples
 ```
 
-### Building
+View examples at `http://localhost:5173/docs/examples/`
+
+## GitHub Pages Deployment
+
 ```bash
-# Build ES module + type definitions
-npm run build
-
-# Watch mode (rebuilds on changes)
-npm run dev
-```
-
-### Running Examples
-```bash
-# Development mode (with hot reload)
-npm run dev
-# Open http://localhost:5173/examples/basic.html
-
-# Or with standalone examples (after build)
-npx serve
-# Open http://localhost:3000/examples/standalone.html
+./setup-demo.sh              # Build library + setup docs
+npm run serve                # Test locally at localhost:3000
+git add docs/ && git push    # Deploy (enable Pages in repo settings)
 ```
 
 ## License
 
-MIT
-
-## Credits
-
-Developed by CNR-ISTI Visual Computing Lab for the OCRA project.
+MIT • Developed by CNR-ISTI Visual Computing Lab
