@@ -21,11 +21,6 @@
 </head>
 <body>
   <div id="viewer"></div>
-  <div id="info">
-    <h3>🎛️ All UI Controls</h3>
-    <p>Try all the buttons on the right →</p>
-  </div>
-
   <script type="importmap">
     {
       "imports": {
@@ -36,21 +31,22 @@
   </script>
 
   <script type="module">
-    import { ThreePresenter } from '../dist/three-presenter.js';
+    import { ThreePresenter, DefaultUI } from '../dist/three-presenter.js';
 
     const presenter = new ThreePresenter('viewer');
+    const ui = new DefaultUI(presenter);
 
     presenter.loadScene({
       models: [{ id: 'model', file: 'venus.glb', rotation: [-90, 0, 0] }],
       environment: { showGround: true, background: '#2c2c2c' }
     }).then(() => {
       // Show all available UI buttons
-      presenter.setButtonVisible('home', true);
-      presenter.setButtonVisible('light', true);
-      presenter.setButtonVisible('env', true);
-      presenter.setButtonVisible('screenshot', true);
-      presenter.setButtonVisible('camera', true);
-      presenter.setButtonVisible('annotation', true);
+      ui.setButtonVisible('home', true);
+      ui.setButtonVisible('light', true);
+      ui.setButtonVisible('env', true);
+      ui.setButtonVisible('screenshot', true);
+      ui.setButtonVisible('camera', true);
+      ui.setButtonVisible('annotation', true);
     });
   </script>
 </body>

@@ -60,7 +60,7 @@
     // Render examples list
     function renderExamplesList() {
       const listEl = document.getElementById('examplesList');
-      listEl.innerHTML = examples.map(ex => `
+      listEl.innerHTML = examples.map((ex, idx) => `
         <a href="#${ex.id}" class="example-item" data-id="${ex.id}">
           <div class="title">${ex.title}</div>
           <div class="description">${ex.description}</div>

@@ -22,14 +22,6 @@
 </head>
 <body>
   <div id="viewer"></div>
-  <div id="info">
-    <h3>🎨 PLY + Custom Material</h3>
-    <p>Loading PLY model with material override:</p>
-    <p><code>color: "#ff4444"</code></p>
-    <p><code>metalness: 0.2</code></p>
-    <p><code>roughness: 0.7</code></p>
-  </div>
-
   <script type="importmap">
     {
       "imports": {
@@ -40,9 +32,10 @@
   </script>
 
   <script type="module">
-    import { ThreePresenter } from '../dist/three-presenter.js';
+    import { ThreePresenter, DefaultUI } from '../dist/three-presenter.js';
 
     const presenter = new ThreePresenter('viewer');
+    const ui = new DefaultUI(presenter);
 
     presenter.loadScene({
       models: [{
@@ -57,8 +50,8 @@
       }],
       environment: { showGround: true, background: '#1a1a1a' }
     }).then(() => {
-      presenter.setButtonVisible('home', true);
-      presenter.setButtonVisible('light', true);
+      ui.setButtonVisible('home', true);
+      ui.setButtonVisible('light', true);
       console.log('✅ PLY loaded with custom red material');
     }).catch(err => {
       console.warn('Note: bunny.ply not found, trying venus.glb instead');
@@ -71,8 +64,8 @@
         }],
         environment: { showGround: true, background: '#1a1a1a' }
       }).then(() => {
-        presenter.setButtonVisible('home', true);
-        presenter.setButtonVisible('light', true);
+        ui.setButtonVisible('home', true);
+        ui.setButtonVisible('light', true);
       });
     });
   </script>
