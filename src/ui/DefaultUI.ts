@@ -19,10 +19,14 @@ export interface DefaultUIConfig {
  * - Annotation toggle - enable/disable picking mode
  * - Camera mode switch - toggle between perspective and orthographic
  * - Screenshot capture - save current view as image
+ * - Fullscreen toggle - enter/exit fullscreen mode (bottom-right corner)
+ * 
+ * All buttons are hidden by default and must be enabled individually using
+ * `setButtonVisible(id, true)`. Available button IDs: 'home', 'light', 'lightPosition',
+ * 'env', 'screenshot', 'camera', 'annotation', 'fullscreen'.
  * 
  * The UI responds to state changes via callbacks, keeping it in sync with the
- * presenter's internal state. Buttons can be individually hidden/shown via
- * `setButtonVisible()`.
+ * presenter's internal state.
  * 
  * @example
  * ```typescript
@@ -36,7 +40,8 @@ export interface DefaultUIConfig {
  * 
  * // Show only specific buttons
  * ui.setButtonVisible('home', true);
- * ui.setButtonVisible('annotation', false);
+ * ui.setButtonVisible('screenshot', true);
+ * ui.setButtonVisible('fullscreen', true);
  * ```
  * 
  * @see {@link UIControlsBuilder} for button creation details
@@ -44,6 +49,7 @@ export interface DefaultUIConfig {
  */
 export class DefaultUI {
     container: HTMLDivElement;
+    fullscreenContainer: HTMLDivElement;
     buttons: Map<string, HTMLButtonElement>;
     private envLightingEnabled: boolean = true;
 
@@ -126,6 +132,28 @@ export class DefaultUI {
         this.container = result.container;
         this.buttons = result.buttons;
 
+        // Create fullscreen button in bottom-right corner
+        const fullscreenButtonConfig: ButtonConfig[] = [{
+            id: 'fullscreen',
+            icon: 'bi-fullscreen',
+            title: 'Toggle fullscreen',
+            onClick: () => this.toggleFullscreen(),
+            visible: false
+        }];
+
+        const fullscreenResult = new UIControlsBuilder()
+            .setContainer({
+                position: 'bottom-right',
+                direction: 'horizontal',
+                gap: 'gap-2',
+                zIndex: '1000'
+            })
+            .addButtons(fullscreenButtonConfig)
+            .build();
+
+        this.fullscreenContainer = fullscreenResult.container;
+        this.buttons.set('fullscreen', fullscreenResult.buttons.get('fullscreen')!);
+
         // Attach to mount
         // We assume presenter.mount is accessible or we pass mount separately?
         // ThreePresenter.mount is public.
@@ -134,9 +162,34 @@ export class DefaultUI {
             mount.style.position = 'relative';
         }
         mount.appendChild(this.container);
+        mount.appendChild(this.fullscreenContainer);
 
         // Subscribe to state changes
         this.attachListeners();
+
+        // Listen for fullscreen changes (e.g., user presses ESC)
+        document.addEventListener('fullscreenchange', () => this.updateFullscreenButton());
+    }
+
+    private toggleFullscreen() {
+        const mount = this.presenter.mount;
+        if (!document.fullscreenElement) {
+            mount.requestFullscreen().catch(err => {
+                console.error('Error attempting to enable fullscreen:', err);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    private updateFullscreenButton() {
+        const btn = this.buttons.get('fullscreen');
+        if (btn) {
+            const isFullscreen = !!document.fullscreenElement;
+            btn.innerHTML = isFullscreen 
+                ? '<i class="bi bi-fullscreen-exit"></i>' 
+                : '<i class="bi bi-fullscreen"></i>';
+        }
     }
 
     private attachListeners() {
@@ -221,5 +274,9 @@ export class DefaultUI {
         if (this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
         }
+        if (this.fullscreenContainer.parentNode) {
+            this.fullscreenContainer.parentNode.removeChild(this.fullscreenContainer);
+        }
+        document.removeEventListener('fullscreenchange', () => this.updateFullscreenButton());
     }
 }
