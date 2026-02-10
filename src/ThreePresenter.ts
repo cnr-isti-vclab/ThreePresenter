@@ -375,6 +375,7 @@ export class ThreePresenter {
 
     // Render viewport gizmo if present
     if (this.viewportGizmo && typeof this.viewportGizmo.render === 'function') {
+      this.viewportGizmo.update();
       this.viewportGizmo.render();
     }
   }
