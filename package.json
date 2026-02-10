@@ -17,25 +17,9 @@
     "dist"
   ],
   "scripts": {
+    "dev": "node scripts/dev-unified.js",
     "build": "vite build && npx tsc --emitDeclarationOnly",
-    "build:demo": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js",
-    "build:all": "npm run build && npm run docs && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js",
-    "dev": "vite",
-    "dev:docs": "node scripts/watch-and-copy.js",
-    "dev:live": "node scripts/dev-serve.js",
-    "serve": "http-server docs -p 3000",
-    "docs": "typedoc",
-    "// b": "── Build Commands ──────────────────────────────────────────────",
-    "// build": "Production build: bundle library + TypeScript declarations",
-    "// build:demo": "Build library + copy artifacts to docs/dist/ (for local preview)",
-    "// build:all": "Build library + generate API docs + copy to docs/dist/",
-    "// d": "── Development Commands ────────────────────────────────────────",
-    "// dev": "Fast dev with Vite HMR (http://localhost:5173/docs) — recommended for quick iteration",
-    "// dev:docs": "Watch src/ + rebuild + copy to docs/dist/ (use with 'serve' in another terminal)",
-    "// dev:live": "Watch + rebuild + http-server at :3000 — one-command workflow with built files",
-    "// u": "── Utility Commands ────────────────────────────────────────────",
-    "// serve": "Serve docs folder at http://localhost:3000 (use after build:demo or with dev:docs)",
-    "// docs": "Generate TypeDoc API documentation into docs/api/"
+    "deploy": "npm run build && typedoc && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js"
   },
   "keywords": [
     "three.js",

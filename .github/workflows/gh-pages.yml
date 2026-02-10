@@ -30,17 +30,8 @@ jobs:
       - name: Install dependencies
         run: npm ci  # Install project dependencies
 
-      - name: Build Library
-        run: npm run build  # Build the library
-
-      - name: Generate Docs
-        run: npm run docs  # Generate documentation
-
-      - name: Prepare Docs Folder
-        # Ensure the destination directory exists
-        run: |
-          mkdir -p docs/dist  # Create docs/dist directory
-          cp -r dist/* docs/dist/  # Copy built files to docs/dist
+      - name: Build for deployment
+        run: npm run deploy  # Build library, generate docs, copy to docs/dist, generate examples.json
 
       - name: Setup Pages
         uses: actions/configure-pages@v5  # Configure GitHub Pages

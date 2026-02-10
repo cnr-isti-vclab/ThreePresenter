@@ -26,19 +26,18 @@ await viewer.loadScene({
 
 ```bash
 npm install
-npm run dev          # Start dev server at localhost:5173
-npm run build        # Build library
-npm run build:demo   # Build + copy to docs/dist for examples
+npm run dev      # Watch src/ + auto-rebuild + serve at localhost:5173
+npm run build    # Build library for npm
+npm run deploy   # Build everything for GitHub Pages
 ```
 
-View examples at `http://localhost:5173/docs/examples/`
+View examples at `http://localhost:5173/docs/` while `npm run dev` is running.
 
-## GitHub Pages Deployment
+## Deployment
 
 ```bash
-./setup-demo.sh              # Build library + setup docs
-npm run serve                # Test locally at localhost:3000
-git add docs/ && git push    # Deploy (enable Pages in repo settings)
+npm run deploy           # Build library + generate docs + prepare docs/dist
+git add . && git push    # Deploy to GitHub Pages
 ```
 
 ## License
