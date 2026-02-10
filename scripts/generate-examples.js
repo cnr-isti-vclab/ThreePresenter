@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+
+// Generates examples.json by reading each example HTML file in docs/examples/, extracting metadata, and saving the source code
+// This allows the Vite dev server to serve examples with live source code display without needing a separate build step for the examples
+// This file is called by the dev-unified.js script after building the library and copying to docs/dist/ to ensure examples.json is always up to date with the latest source code changes
+
 import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
