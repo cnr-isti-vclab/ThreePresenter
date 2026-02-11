@@ -69,13 +69,13 @@ export class ScaleIndicator {
     this.config = {
       unit: config.unit ?? 'units',
       rulerSize: rulerSize,
-      segments: config.segments ?? 10,
-      barHeight: config.barHeight ?? rulerSize / 10,
+      segments: config.segments ?? 5,
+      barHeight: config.barHeight ?? rulerSize / 40, 
       barThickness: config.barThickness ?? 0.001,
-      textHeight: config.textHeight ?? rulerSize / 15,
+      textHeight: config.textHeight ?? rulerSize / 30,
       lightColor: config.lightColor ?? 0xffffff,
-      darkColor: config.darkColor ?? 0x000000,
-      textColor: config.textColor ?? 0x000000
+      darkColor: config.darkColor ?? 0x0000000,
+      textColor: config.textColor ?? 0x00ff00
     };
 
     this.group = new THREE.Group();
@@ -85,43 +85,35 @@ export class ScaleIndicator {
   }
 
   /**
-   * Create a checkerboard-style scale bar (like photography reference scales)
+   * Create a two rows checkerboard-style scale bar (like photography reference scales)
    */
   private createCheckerboardBar() {
     const { rulerSize, segments, barHeight, barThickness, lightColor, darkColor } = this.config;
     const segmentWidth = rulerSize / segments;
 
-    // Create checkerboard pattern
-    for (let i = 0; i < segments; i++) {
-      const x = i * segmentWidth;
-      const color = i % 2 === 0 ? lightColor : darkColor;
-      
-      // Create a box for each square
-      const geometry = new THREE.BoxGeometry(segmentWidth, barThickness, barHeight);
-      const material = new THREE.MeshStandardMaterial({
-        color: color,
-        roughness: 0.8,
-        metalness: 0.1
-      });
-      
-      const square = new THREE.Mesh(geometry, material);
-      // Position: center the segment in X, slightly above ground, center in Z
-      square.position.set(x + segmentWidth / 2, barThickness / 2 + 0.001, 0);
-      this.group.add(square);
-    }
+    // Create the two rows of checkerboard pattern
+    for (let row = 0; row < 2; row++) {
+      for (let i = 0; i < segments; i++) {
+        const x = i * segmentWidth;
+        const color = (i + row) % 2 === 0 ? lightColor : darkColor;
 
-    // Add border frame for better definition
-    const borderMaterial = new THREE.LineBasicMaterial({ color: 0x666666 });
-    const borderPoints = [
-      new THREE.Vector3(0, 0.002, -barHeight / 2),
-      new THREE.Vector3(rulerSize, 0.002, -barHeight / 2),
-      new THREE.Vector3(rulerSize, 0.002, barHeight / 2),
-      new THREE.Vector3(0, 0.002, barHeight / 2),
-      new THREE.Vector3(0, 0.002, -barHeight / 2)
-    ];
-    const borderGeometry = new THREE.BufferGeometry().setFromPoints(borderPoints);
-    const border = new THREE.Line(borderGeometry, borderMaterial);
-    this.group.add(border);
+        // Create a box for each square
+        const geometry = new THREE.BoxGeometry(segmentWidth, barThickness, barHeight);
+        const material = new THREE.MeshStandardMaterial({
+          color: color,
+          roughness: 0.9,
+          metalness: 0.1
+        });
+
+        const square = new THREE.Mesh(geometry, material);
+        // Position: center the segment in X, slightly above ground, center in Z
+        square.position.set(
+          x + segmentWidth / 2, 
+          0, 
+          row*barHeight - barHeight / 2);
+        this.group.add(square);
+      }
+    } 
 
     // Add numeric labels at key intervals
     this.addNumericLabels();
@@ -129,7 +121,7 @@ export class ScaleIndicator {
     // Add unit label
     this.addUnitLabel();
 
-    console.log(`📏 Scale indicator created: ${rulerSize} ${this.config.unit} (${segments} segments)`);
+    console.log(`Scale indicator created: ${rulerSize} ${this.config.unit} (${segments} segments)`);
   }
 
   /**
@@ -158,18 +150,9 @@ export class ScaleIndicator {
       
       const label = this.createTextPlane(text, textHeight * 0.8);
       // Position flat on the ground, slightly above the bar
-      label.position.set(x, 0.003, barHeight / 2 + textHeight * 0.5);
+      label.position.set(x, 0.003, barHeight + textHeight * 0.5);
       this.group.add(label);
 
-      // Add small tick mark
-      const tickPoints = [
-        new THREE.Vector3(x, 0.002, -barHeight / 2),
-        new THREE.Vector3(x, 0.002, -barHeight / 2 - textHeight * 0.3)
-      ];
-      const tickGeometry = new THREE.BufferGeometry().setFromPoints(tickPoints);
-      const tickMaterial = new THREE.LineBasicMaterial({ color: this.config.textColor });
-      const tick = new THREE.Line(tickGeometry, tickMaterial);
-      this.group.add(tick);
     });
   }
 
@@ -195,7 +178,7 @@ export class ScaleIndicator {
     if (!ctx) throw new Error('Failed to get canvas context');
 
     // High resolution for crisp text
-    canvas.width = 1024;
+    canvas.width = 256;
     canvas.height = 256;
 
     // Draw text with background for better visibility
@@ -220,10 +203,10 @@ export class ScaleIndicator {
     // Create material with the text texture
     const material = new THREE.MeshBasicMaterial({
       map: texture,
-      transparent: true,
+      // transparent: true,
       side: THREE.DoubleSide,
-      depthTest: false,
-      depthWrite: false
+      // depthTest: false,
+      // depthWrite: false
     });
     
     const plane = new THREE.Mesh(geometry, material);
