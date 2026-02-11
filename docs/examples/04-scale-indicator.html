@@ -25,7 +25,7 @@
         import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
 
         const container = document.getElementById('viewer');
-        const resolver = new StaticBaseUrlResolver('assets');
+        const resolver = new StaticBaseUrlResolver('../assets');
         const presenter = new ThreePresenter({ mount: container, fileUrlResolver: resolver });
 
         // Load scene with ground and scale indicator
@@ -35,7 +35,7 @@
                 showGround: true,
                 scaleIndicator: {
                     enabled: true,
-                    unit: 'meters',
+                    unit: 'meter',
                     rulerSize: 1,
                     posX: 0,
                     posZ: 0

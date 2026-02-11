@@ -10,14 +10,6 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui; background: #1a1a1a; }
     #viewer { width: 100vw; height: 100vh; }
-    #info { 
-      position: absolute; top: 20px; left: 20px; 
-      background: rgba(0,0,0,0.85); color: white; 
-      padding: 15px; border-radius: 8px; 
-      font-size: 13px; line-height: 1.6; max-width: 300px;
-    }
-    #info h3 { font-size: 16px; margin-bottom: 8px; color: #ff6b6b; }
-    #info code { background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -32,9 +24,12 @@
   </script>
 
   <script type="module">
-    import { ThreePresenter, DefaultUI } from '../dist/three-presenter.js';
+    import { ThreePresenter, DefaultUI, StaticBaseUrlResolver } from '../dist/three-presenter.js';
 
-    const presenter = new ThreePresenter('viewer');
+    const presenter = new ThreePresenter({ 
+      mount: 'viewer',
+      fileUrlResolver: new StaticBaseUrlResolver('../assets')
+    });
     const ui = new DefaultUI(presenter);
 
     presenter.loadScene({

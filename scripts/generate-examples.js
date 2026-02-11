@@ -15,7 +15,8 @@ const examples = [
   { id: '01-minimal', title: 'Minimal Setup', description: 'Simplest possible viewer' },
   { id: '02-all-controls', title: 'All UI Controls', description: 'Complete UI button set' },
   { id: '03-ply-material', title: 'PLY + Custom Material', description: 'Material overrides for PLY' },
-  { id: '04-scale-indicator', title: 'Scale Indicator', description: 'Ground plane with scale bar' }
+  { id: '04-scale-indicator', title: 'Scale Indicator', description: 'Ground plane with scale bar' },
+  { id: '05-nexus', title: 'Nexus Multiresolution', description: 'Progressive streaming NXZ' }
 ];
 
 const examplesJson = examples.map(ex => {

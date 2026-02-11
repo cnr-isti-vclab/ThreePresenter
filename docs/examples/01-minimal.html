@@ -25,9 +25,12 @@
   </script>
 
   <script type="module">
-    import { ThreePresenter } from '../dist/three-presenter.js';
+    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
 
-    const presenter = new ThreePresenter('viewer');
+    const presenter = new ThreePresenter({ 
+      mount: 'viewer',
+      fileUrlResolver: new StaticBaseUrlResolver('../assets')
+    });
 
     presenter.loadScene({
       models: [{ id: 'model', file: 'venus.glb' }]
