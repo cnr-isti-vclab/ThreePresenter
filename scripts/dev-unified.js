@@ -48,9 +48,8 @@ function debouncedBuild() {
 // Start Vite dev server
 function startVite() {
   console.log('🚀 Starting Vite dev server...\n');
-  viteProcess = spawn('npm', ['run', 'dev:vite'], { 
-    stdio: 'inherit', 
-    shell: true 
+  viteProcess = spawn('npx', ['vite', 'docs', '--port', '8080'], { 
+    stdio: 'inherit'
   });
 
   viteProcess.on('close', (code) => {
@@ -63,7 +62,7 @@ console.log('🎯 Unified Dev Mode');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('👀 Watching src/ for changes');
 console.log('🔨 Auto-rebuilding to docs/dist/');
-console.log('🌐 Serving with Vite dev server');
+console.log('🌐 Vite dev server with HMR');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 // Initial build

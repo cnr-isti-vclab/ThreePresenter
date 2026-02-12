@@ -1,8 +1,8 @@
 # ThreePresenter
 
-A framework-agnostic 3D viewer library built on Three.js for web applications.
+A framework-agnostic 3D viewer library built on Three.js for Cultural Heritage and scientific web applications.
 
-**Features:** Multi-format model loading (GLB, PLY, OBJ, NXS) • Point annotations • Camera controls • HDRI lighting • Ground plane with scale indicator
+**Features:** Multi-format model loading (GLB, PLY, OBJ, NXS/Nexus) • Point annotations • Camera controls • HDRI lighting • Ground plane with scale indicator • Multi-resolution streaming
 
 [API Documentation](https://cnr-isti-vclab.github.io/ThreePresenter/api/) • [Live Examples](https://cnr-isti-vclab.github.io/ThreePresenter/)
 
@@ -13,32 +13,53 @@ npm install three-presenter three
 ```
 
 ```javascript
-import { ThreePresenter } from 'three-presenter';
+import { ThreePresenter, StaticBaseUrlResolver } from 'three-presenter';
 
-const viewer = new ThreePresenter({ mount: 'viewer' });
+const viewer = new ThreePresenter({ 
+  mount: 'viewer',  // or HTMLDivElement
+  fileUrlResolver: new StaticBaseUrlResolver('./assets')
+});
+
 await viewer.loadScene({
   models: [{ id: 'model', file: 'model.glb' }],
   environment: { showGround: true }
 });
 ```
 
+**Optional UI Controls:**
+
+```javascript
+import { DefaultUI } from 'three-presenter';
+const ui = new DefaultUI(viewer);
+ui.setButtonVisible('home', true);
+ui.setButtonVisible('screenshot', true);
+```
+
 ## Development
 
 ```bash
 npm install
-npm run dev      # Watch src/ + auto-rebuild + serve at localhost:5173
+npm run dev      # Watch src/ + auto-rebuild + serve at localhost:8080
 npm run build    # Build library for npm
 npm run deploy   # Build everything for GitHub Pages
 ```
 
-View examples at `http://localhost:5173/docs/` while `npm run dev` is running.
+View examples at `http://localhost:8080/docs/` while `npm run dev` is running.
 
-## Deployment
+## Deployment to GitHub Pages
+It is done automatically by GitHub Action on push to the main branch.
 
+## Deployment to npm
+Make sure to update the version in `package.json` before publishing.
 ```bash
-npm run deploy           # Build library + generate docs + prepare docs/dist
-git add . && git push    # Deploy to GitHub Pages
+npm run build    # Build library for npm
+npm publish       # Publish to npm registry
 ```
+## Folder Structure
+- `src/`: Source code for the ThreePresenter library.
+- `docs/`: root of the website deployed onto github.io by github actions; it contains the generated API documentation (docs/api) and the sources of the examples ( [docs/examples/](https://github.com/cnr-isti-vclab/ThreePresenter/tree/main/docs/examples) that will appear on the website). 
+- `dist/`: Compiled library for npm and GitHub Pages (gitignored).
+- `assets/`: Sample models and textures for examples.
 
 ## License
 

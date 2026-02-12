@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "node scripts/dev-unified.js",
     "build": "vite build && npx tsc --emitDeclarationOnly",
-    "deploy": "npm run build && typedoc && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js"
+    "deploy": "npm run build && typedoc && mkdir -p docs/dist docs/examples && cp -r dist/* docs/dist/ && cp node_modules/nexus3d/dist/corto.em.js docs/examples/ && node scripts/generate-examples.js"
   },
   "keywords": [
     "three.js",
