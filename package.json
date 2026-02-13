@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "node scripts/dev-unified.js",
     "build": "vite build && npx tsc --emitDeclarationOnly",
-    "deploy": "npm run build && typedoc && mkdir -p docs/dist docs/examples && cp -r dist/* docs/dist/ && cp node_modules/nexus3d/dist/corto.em.js docs/examples/ && node scripts/generate-examples.js"
+    "deploy": "npm run build && typedoc && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js"
   },
   "keywords": [
     "three.js",
@@ -37,7 +37,7 @@
     "three": "^0.180.0"
   },
   "dependencies": {
-    "nexus3d": "^1.0.10",
+    "nexus3d": "^1.0.11",
     "three-viewport-gizmo": "^0.1.5"
   },
   "devDependencies": {
