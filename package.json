@@ -33,6 +33,14 @@
     "nexus"
   ],
   "author": "CNR-ISTI Visual Computing Lab",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cnr-isti-vclab/ThreePresenter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cnr-isti-vclab/ThreePresenter/issues"
+  },
+  "homepage": "https://github.com/cnr-isti-vclab/ThreePresenter#readme",
   "peerDependencies": {
     "three": "^0.180.0"
   },
