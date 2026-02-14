@@ -396,23 +396,23 @@ export class ModelLoader {
     if (materialOverrides && (materialOverrides as any).isMaterial) {
       finalMaterial = materialOverrides as THREE.Material;
     } else {
-      // const materialProps = this.mergeMaterialProperties(
-      //   this.config.defaultMaterial,
-      //   materialOverrides as MaterialProperties
-      // );
-      const materialConfig: any = {
-        color: 0xffffff, 
-        flatShading: false,
-        metalness: 0.3,
-        roughness: 0.5
+      const materialProps = this.mergeMaterialProperties(
+        this.config.defaultMaterial,
+        materialOverrides as MaterialProperties
+      );
+      const materialConfig: THREE.MeshStandardMaterialParameters = {
+        color: materialProps.color,
+        flatShading: materialProps.flatShading,
+        metalness: materialProps.metalness,
+        roughness: materialProps.roughness
       };
-      
+
       // Apply texture map if it was successfully loaded
       if (textureMap) {
         materialConfig.map = textureMap;
         console.log('✨ Applied texture map to material');
       }
-      
+
       finalMaterial = new THREE.MeshStandardMaterial(materialConfig);
     }
 
