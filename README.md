@@ -1,6 +1,7 @@
 # ThreePresenter
 
-A framework-agnostic 3D viewer library built on Three.js for Cultural Heritage and scientific web applications.
+A framework-agnostic 3D viewer library built on Three.js for Cultural Heritage and scientific web applications. 
+
 
 **Features:** Multi-format model loading (GLB, PLY, OBJ, NXS/Nexus) • Point annotations • Camera controls • HDRI lighting • Ground plane with scale indicator • Multi-resolution streaming
 
@@ -37,13 +38,16 @@ ui.setButtonVisible('screenshot', true);
 
 ## Development
 
+Once you have cloned the repository, install dependencies and start the development server with:  
 ```bash
 npm install
 npm run dev      # Watch src/ + auto-rebuild + serve at localhost:8080
+```
+Other available commands:
+```bash
 npm run build    # Build library for npm
 npm run deploy   # Build everything for GitHub Pages
 ```
-
 View examples at `http://localhost:8080/docs/` while `npm run dev` is running.
 
 ## Deployment to GitHub Pages
