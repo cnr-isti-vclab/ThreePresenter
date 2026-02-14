@@ -37,7 +37,7 @@
     "three": "^0.180.0"
   },
   "dependencies": {
-    "nexus3d": "^1.0.11",
+    "nexus3d": "^1.0.10",
     "three-viewport-gizmo": "^0.1.5"
   },
   "devDependencies": {
