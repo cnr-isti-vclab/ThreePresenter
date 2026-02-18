@@ -16,7 +16,8 @@ const examples = [
   { id: '02-all-controls', title: 'All UI Controls', description: 'Complete UI button set' },
   { id: '03-ply-material', title: 'PLY + Custom Material', description: 'Material overrides for PLY' },
   { id: '04-scale-indicator', title: 'Scale Indicator', description: 'Ground plane with scale bar' },
-  { id: '05-nexus', title: 'Nexus Multiresolution', description: 'Progressive streaming NXZ' }
+  { id: '05-nexus', title: 'Nexus Multiresolution', description: 'Progressive streaming NXZ' },
+  { id: '06-iiif-manifest', title: 'IIIF-3D Manifest', description: 'Load from a IIIF Presentation API 4 manifest' }
 ];
 
 const examplesJson = examples.map(ex => {

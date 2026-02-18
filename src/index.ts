@@ -141,3 +141,6 @@ export type { InputControllerConfig } from './managers/InputController';
 
 // Export render loop
 export { RenderLoop } from './managers/RenderLoop';
+
+// Export IIIF manifest parser
+export { parseIIIFManifest } from './utils/IIIFManifestParser';

@@ -163,7 +163,7 @@ export class ModelLoader {
     }
 
     // For other formats, fetch the file
-    const response = await fetch(url, { credentials: 'include' });
+    const response = await fetch(url, { credentials: 'same-origin' });
 
     if (!response.ok) {
       throw new Error(`Failed to load model from ${url}: HTTP ${response.status}`);
