@@ -1,9 +1,12 @@
 # ThreePresenter
 
-A framework-agnostic 3D viewer library built on Three.js for Cultural Heritage and scientific web applications. 
+A framework-agnostic 3D viewer built on Three.js for Cultural Heritage and scientific web applications. 
+
+The library provides a simple high-level API for loading, visualizing, and showing 3D models in the browser, with a focus on ease of use, integration,  and extensibility. It supports multiple 3D formats, IIIF 3D, camera controls, lighting, and 3D annotations. 
+
+OCRA is developed within the frame of the [ECHOES project](https://www.echoes-eccch.eu/).
 
 
-**Features:** Multi-format model loading (GLB, PLY, OBJ, NXS/Nexus) • Point annotations • Camera controls • HDRI lighting • Ground plane with scale indicator • Multi-resolution streaming
 
 [API Documentation](https://cnr-isti-vclab.github.io/ThreePresenter/api/) • [Live Examples](https://cnr-isti-vclab.github.io/ThreePresenter/)
 
@@ -50,10 +53,10 @@ npm run deploy   # Build everything for GitHub Pages
 ```
 View examples at `http://localhost:8080/docs/` while `npm run dev` is running.
 
-## Deployment to GitHub Pages
+### Deployment to GitHub Pages
 It is done automatically by GitHub Action on push to the main branch.
 
-## Deployment to npm
+### Deployment to npm
 Make sure to update the version in `package.json` before publishing.
 ```bash
 npm run build    # Build library for npm
