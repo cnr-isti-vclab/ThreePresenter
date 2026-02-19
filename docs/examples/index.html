@@ -20,7 +20,6 @@
     <main class="main-content">
       <header class="content-header">
         <h2 id="exampleTitle">Select an example</h2>
-        <div class="breadcrumb">Examples</div>
       </header>
       
       <div class="split-view">
@@ -47,7 +46,7 @@
     fetch('examples.json')
       .then(r => r.json())
       .then(data => {
-        examples = data;
+        examples = data.examples ?? data;
         renderExamplesList();
         handleHash();
       })
@@ -62,10 +61,10 @@
     function renderExamplesList() {
       const listEl = document.getElementById('examplesList');
       listEl.innerHTML = examples.map((ex, idx) => `
-        <a href="#${ex.id}" class="example-item" data-id="${ex.id}">
+        <div class="example-item" data-id="${ex.id}">
           <div class="title">${ex.title}</div>
-          <div class="description">${ex.description}</div>
-        </a>
+          <div class="accordion-desc">${ex.descriptionHtml ?? ex.description ?? ''}</div>
+        </div>
       `).join('');
 
       // Add click handlers (only for items with data-id, not the back link)

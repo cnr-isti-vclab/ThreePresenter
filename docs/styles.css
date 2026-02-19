@@ -330,6 +330,7 @@ body {
   border-left: 3px solid transparent;
   transition: all 0.2s;
   cursor: pointer;
+  user-select: none;
 }
 
 .example-item:hover {
@@ -348,9 +349,35 @@ body {
   margin-bottom: 3px;
 }
 
-.example-item .description {
+.example-item .accordion-desc {
   font-size: 12px;
   color: #95a5a6;
+  max-height: 0;
+  overflow: hidden;
+  line-height: 1.5;
+  margin-top: 0;
+  transition: max-height 0.25s ease, margin-top 0.2s ease;
+}
+
+.example-item.active .accordion-desc {
+  max-height: 200px;
+  margin-top: 6px;
+}
+
+.example-item .accordion-desc a,
+.example-item .accordion-desc code,
+.example-item .accordion-desc strong {
+  font-size: inherit;
+}
+
+.example-item .accordion-desc a {
+  color: #aec6d8;
+}
+
+.example-item .accordion-desc code {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  padding: 0 3px;
 }
 
 .main-content {

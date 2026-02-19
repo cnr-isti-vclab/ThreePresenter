@@ -90,6 +90,7 @@ export class ThreePresenter {
    * Their initial state (visibility, position, etc.) is derived from the {@link ModelDefinition} configuration.
    */
   models: Record<string, THREE.Object3D> = {};  // Changed from meshes
+  private bboxHelpers: Record<string, THREE.BoxHelper> = {};
   currentScene: SceneDescription | null = null;
   mount: HTMLDivElement;
   ground: THREE.GridHelper | null = null;
@@ -508,6 +509,11 @@ export class ThreePresenter {
       this.scene.remove(model);
     });
     this.models = {};
+    Object.values(this.bboxHelpers).forEach(h => {
+      this.scene.remove(h);
+      h.geometry.dispose();
+    });
+    this.bboxHelpers = {};
   }
 
   /**
@@ -517,9 +523,27 @@ export class ThreePresenter {
    * - scale: single number or [x,y,z]
    */
   private applyTransforms(model: THREE.Object3D, def: ModelDefinition) {
-    // Position
-    if (def.position && def.position.length === 3) {
-      model.position.set(def.position[0], def.position[1], def.position[2]);
+    // Origin adjustment: shift model so its bbox centre lands at the world origin
+    // before any explicit position offset is applied.
+    if (def.origin === 'model_center') {
+      model.updateWorldMatrix(false, true);
+      const bbox = new THREE.Box3().setFromObject(model);
+      const center = bbox.getCenter(new THREE.Vector3());
+      model.position.sub(center);
+      console.log(`🎯 Model '${def.id}' origin set to model_center, offset:`, center);
+
+      // Explicit position is an additional offset on top of the centering
+      if (def.position && def.position.length === 3) {
+        model.position.x += def.position[0];
+        model.position.y += def.position[1];
+        model.position.z += def.position[2];
+      }
+    } else {
+      // Default 'model_coord': explicit position overwrites the file's own coordinates
+      if (def.position && def.position.length === 3) {
+        model.position.set(def.position[0], def.position[1], def.position[2]);
+        console.log(`🎯 Model '${def.id}' origin set to model_coord, position:`, model.position);
+      }
     }
 
     // Rotation - prefer explicit units (def.rotationUnits -> scene rotationUnits), otherwise auto-detect
@@ -671,6 +695,15 @@ export class ThreePresenter {
       this.models[modelDef.id] = model;
       this.scene.add(model);
 
+      // Optionally draw a bounding box helper
+      if (modelDef.showBoundingBox) {
+        const rawColor = modelDef.boundingBoxColor ?? 0xffff00;
+        const color = typeof rawColor === 'string' ? parseInt(rawColor.replace('#', ''), 16) : rawColor;
+        const helper = new THREE.BoxHelper(model, color);
+        this.scene.add(helper);
+        this.bboxHelpers[modelDef.id] = helper;
+      }
+
       console.log(`✅ Loaded model ${modelDef.id}`);
 
       // Notify completion
@@ -800,6 +833,9 @@ export class ThreePresenter {
       sceneBBox.makeEmpty();
       allModels.forEach(m => sceneBBox.expandByObject(m));
 
+      // Update bbox helpers now that models have been repositioned
+      Object.values(this.bboxHelpers).forEach(h => h.update());
+
       // Use CameraManager to frame the scene (automatically sets near/far planes)
       this.cameraManager.frameBoundingBox(sceneBBox, this.controls);
 
@@ -922,6 +958,28 @@ export class ThreePresenter {
   getModelVisibilityById(modelId: string): boolean {
     const model = this.models[modelId];
     return model ? model.visible : false;
+  }
+
+  /**
+   * Show or hide the bounding box helper for a model.
+   * If the helper doesn't exist yet and `visible` is true, it is created on the fly.
+   */
+  setModelBoundingBoxVisible(modelId: string, visible: boolean, color: number | string = 0xffff00): void {
+    const model = this.models[modelId];
+    if (!model) {
+      console.warn(`⚠️ setModelBoundingBoxVisible: model '${modelId}' not found`);
+      return;
+    }
+    let helper = this.bboxHelpers[modelId];
+    if (!helper && visible) {
+      const c = typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color;
+      helper = new THREE.BoxHelper(model, c);
+      this.scene.add(helper);
+      this.bboxHelpers[modelId] = helper;
+    }
+    if (helper) {
+      helper.visible = visible;
+    }
   }
 
   /**

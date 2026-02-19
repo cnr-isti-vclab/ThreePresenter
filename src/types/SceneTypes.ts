@@ -68,6 +68,17 @@ export interface ModelDefinition {
   rotation?: [number, number, number];
   /** Optional explicit rotation units for this model. If provided, overrides scene-level setting. */
   rotationUnits?: 'deg' | 'rad';
+  /**
+   * Controls how the model's local origin is treated before placing it in the scene.
+   * - `'model_coord'` (default): no adjustment; the model is placed using its original coordinates.
+   * - `'model_center'`: translates the model so that its bounding-box centre falls at the world origin
+   *   before any explicit `position` offset is applied.
+   */
+  origin?: 'model_coord' | 'model_center';
+  /** When true, draws a wireframe bounding box around the model in the scene. */
+  showBoundingBox?: boolean;
+  /** Color of the bounding box wireframe. Accepts a hex number (0xff0000) or CSS hex string ('#ff0000'). Defaults to 0xffff00. */
+  boundingBoxColor?: number | string;
   /** Scale factors [x, y, z], defaults to [1, 1, 1] */
   scale?: number | [number, number, number];
   /** Whether the model is visible, defaults to true */
