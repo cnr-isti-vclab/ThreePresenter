@@ -66,7 +66,15 @@ console.log('🌐 Vite dev server with HMR');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 // Initial build
-buildAndCopy().then(() => {
+buildAndCopy().then(async () => {
+  // Generate API docs once at startup so docs/api/ exists for local dev
+  try {
+    await execAsync('npx typedoc');
+    console.log('📚 API docs generated at docs/api/\n');
+  } catch (e) {
+    console.warn('⚠️  typedoc failed (API doc link will be broken):', e.message);
+  }
+
   // Start Vite after initial build
   startVite();
 

@@ -1,6 +1,6 @@
 {
   "name": "three-presenter",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Framework-agnostic 3D viewer library built on Three.js",
   "license": "MIT",
   "type": "module",
@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-unified.js",
-    "build": "vite build && npx tsc --emitDeclarationOnly",
+    "build": "vite build",
     "deploy": "npm run build && typedoc && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js"
   },
   "keywords": [
@@ -44,15 +44,14 @@
   "peerDependencies": {
     "three": "^0.180.0"
   },
-  "dependencies": {
-    "nexus3d": "^1.0.10",
-    "three-viewport-gizmo": "^0.1.5"
-  },
   "devDependencies": {
     "@types/three": "^0.180.0",
     "http-server": "^14.1.1",
+    "nexus3d": "^1.0.10",
+    "three-viewport-gizmo": "^0.1.5",
     "typedoc": "^0.28.14",
     "typescript": "^5.9.2",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-dts": "^4.5.4"
   }
 }

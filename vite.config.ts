@@ -1,7 +1,17 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import dts from 'vite-plugin-dts';
 
 export default defineConfig({
+  plugins: [
+    dts({
+      include: ['src'],
+      outDir: 'dist',
+      insertTypesEntry: true,
+      tsconfigPath: './tsconfig.json'
+    })
+  ],
+
   // Pre-bundle nexus3d so Vite can transform CommonJS/UMD interop
   optimizeDeps: {
     include: ['nexus3d']

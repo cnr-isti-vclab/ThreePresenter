@@ -68,12 +68,11 @@
         </a>
       `).join('');
 
-      // Add click handlers
-      document.querySelectorAll('.example-item').forEach(item => {
+      // Add click handlers (only for items with data-id, not the back link)
+      document.querySelectorAll('.example-item[data-id]').forEach(item => {
         item.addEventListener('click', (e) => {
           e.preventDefault();
-          const id = item.dataset.id;
-          loadExample(id);
+          loadExample(item.dataset.id);
         });
       });
     }
