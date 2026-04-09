@@ -42,6 +42,8 @@
       mount: 'viewer',
       fileUrlResolver: new StaticBaseUrlResolver('../assets')
     });
+    const annotations = [];
+    let pickId = 0;
 
     const pick = document.getElementById('pick');
     const out = document.getElementById('out');
@@ -53,6 +55,13 @@
 
     presenter.onPointPicked = (point) => {
       pick.textContent = 'Pick point';
+      annotations.push({
+        id: `picked-${++pickId}`,
+        label: `Picked ${pickId}`,
+        type: 'point',
+        geometry: point
+      });
+      presenter.getAnnotationManager().render(annotations);
       out.textContent = `Picked point:\n[${point.map(v => v.toFixed(4)).join(', ')}]`;
     };
 
