@@ -8,6 +8,8 @@ Guidance for coding agents working in this repository.
 - Main library source is in `src/`.
 - Public demo site and examples are in `docs/`.
 - Build output goes to `dist/` (library bundle and type declarations).
+- Any new feature should be documented by an example in `docs/examples/` and added to the examples catalog.
+- Examples should be minimal, as short as possible, self-contained code that demonstrates the feature. They should not be full applications, but rather focused snippets that can be easily read and understood.
 
 ## Dev environment tips
 
@@ -54,13 +56,11 @@ Guidance for coding agents working in this repository.
 - TypeScript is `strict` (`tsconfig.json`); keep changes type-safe.
 - Follow existing style in neighboring files.
 - Prefer small, focused changes over broad refactors unless requested.
+- Prefer short compact code over verbose patterns when clarity is maintained.
+- Before adding new dependencies, consider if the functionality can be implemented with existing tools or simpler code.
+- Avoid code bloating. Always prefer solutions that need less code with respect to ones that are implemented in more code. In particular, avoid duplication of code or functionalities. Also check always for leftover files and functions and ask for their removal. 
 - Avoid introducing new heavy dependencies unless clearly necessary.
 
 ## Pull request instructions
 
 - Keep PRs focused and describe user-visible impact.
-- Include:
-  - what changed
-  - how it was verified (commands run)
-  - any follow-up work
-- If behavior or commands changed, update changelog/docs in the same PR.
