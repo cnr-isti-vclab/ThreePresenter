@@ -1,6 +1,6 @@
 {
   "name": "three-presenter",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Framework-agnostic 3D viewer library built on Three.js",
   "license": "MIT",
   "type": "module",

@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+
+## [0.1.3] - 2026-04-09
 
 ### Added
 - Restored OBJ model support in `ModelLoader` (`.obj` detection and parsing).
@@ -15,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm run smoke:assets` and `npm run smoke` commands for quick smoke validation.
 - `npm run build:docs` and `npm run serve:docs` commands for local docs testing.
 - `MeasurementManager` with modal two-click distance measuring (`line + label + point markers`).
+- Measurement labels now use CSS2D overlay rendering for improved readability.
+- New `07-external-controls.html` example for per-model visibility and bounding-box toggles.
+- New `09-point-picking.html` example for interactive point selection on models.
 - New `10-measurements.html` example and `measure` button support in `DefaultUI`.
 - Annotation payload now supports optional `text` and optional `normal` metadata.
 - `parseIIIFManifest()` now extracts non-painting point annotations (label/text/position) and maps optional point normals from IIIF selectors.
@@ -53,7 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three.js viewport gizmo integration.
 - GitHub Pages deployment via GitHub Actions.
 
-[Unreleased]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cnr-isti-vclab/ThreePresenter/releases/tag/v0.1.0
