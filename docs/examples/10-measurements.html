@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Example 10 - Measurements</title>
+  <style>
+    body { margin: 0; font-family: system-ui; }
+    #viewer { width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 360px;
+      font-size: 13px;
+    }
+    .row { display: flex; gap: 8px; margin-bottom: 8px; }
+    button { padding: 6px 10px; border: 1px solid #bbb; border-radius: 6px; cursor: pointer; }
+    button.active { background: #198754; color: #fff; border-color: #198754; }
+    #log { white-space: pre-line; line-height: 1.35; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="ui">
+    <div class="row">
+      <button id="measureBtn" type="button">Start measure mode</button>
+      <button id="clearBtn" type="button">Clear</button>
+    </div>
+    <div id="log">Click "Start measure mode", then click two points on the mesh.</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
+
+    const presenter = new ThreePresenter({
+      mount: 'viewer',
+      fileUrlResolver: new StaticBaseUrlResolver('../assets')
+    });
+
+    const measureBtn = document.getElementById('measureBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const log = document.getElementById('log');
+
+    presenter.onMeasurementModeChange = (enabled) => {
+      measureBtn.classList.toggle('active', enabled);
+      measureBtn.textContent = enabled ? 'Stop measure mode' : 'Start measure mode';
+    };
+
+    presenter.onMeasurementCreated = (m) => {
+      log.textContent =
+        `Last measurement: ${m.label}\n` +
+        `Start: [${m.start.map(v => v.toFixed(4)).join(', ')}]\n` +
+        `End: [${m.end.map(v => v.toFixed(4)).join(', ')}]\n` +
+        `Total measurements: ${presenter.getMeasurements().length}`;
+    };
+
+    measureBtn.addEventListener('click', () => {
+      presenter.toggleMeasurementMode();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      presenter.clearMeasurements();
+      log.textContent = 'Measurements cleared.';
+    });
+
+    await presenter.loadScene({
+      models: [{ id: 'model', file: 'venus.glb' }],
+      environment: { showGround: true, background: '#2a2a2a' }
+    });
+  </script>
+</body>
+</html>

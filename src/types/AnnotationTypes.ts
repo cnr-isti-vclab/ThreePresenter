@@ -25,8 +25,14 @@ export type AnnotationGeometry =
 export interface Annotation {
   id: string;
   label: string;
+  text?: string;
   type: AnnotationType;
   geometry: AnnotationGeometry;
+  /**
+   * Optional normal vector.
+   * Mainly populated for IIIF point annotations when provided by the selector.
+   */
+  normal?: [number, number, number];
   createdAt?: string;
   updatedAt?: string;
 }

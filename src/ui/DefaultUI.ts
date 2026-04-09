@@ -17,13 +17,14 @@ export interface DefaultUIConfig {
  * - Light position control - adjust light direction relative to camera
  * - Environment lighting - toggle HDRI/environment map
  * - Annotation toggle - enable/disable picking mode
+ * - Measure toggle - two-click distance measuring mode
  * - Camera mode switch - toggle between perspective and orthographic
  * - Screenshot capture - save current view as image
  * - Fullscreen toggle - enter/exit fullscreen mode (bottom-right corner)
  * 
  * All buttons are hidden by default and must be enabled individually using
  * `setButtonVisible(id, true)`. Available button IDs: 'home', 'light', 'lightPosition',
- * 'env', 'screenshot', 'camera', 'annotation', 'fullscreen'.
+ * 'env', 'screenshot', 'camera', 'annotation', 'measure', 'fullscreen'.
  * 
  * The UI responds to state changes via callbacks, keeping it in sync with the
  * presenter's internal state.
@@ -122,6 +123,13 @@ export class DefaultUI {
                 icon: 'bi-pencil',
                 title: 'Add annotation',
                 onClick: () => presenter.togglePickingMode(),
+                visible: false
+            },
+            {
+                id: 'measure',
+                icon: 'bi-rulers',
+                title: 'Measure distance',
+                onClick: () => presenter.toggleMeasurementMode(),
                 visible: false
             }
         ];
@@ -244,6 +252,12 @@ export class DefaultUI {
             this.updateCameraButton(isOrthographic);
             if (originalOnCameraModeChange) originalOnCameraModeChange(isOrthographic);
         };
+
+        const originalOnMeasurementModeChange = this.presenter.onMeasurementModeChange;
+        this.presenter.onMeasurementModeChange = (enabled: boolean) => {
+            this.updateMeasureButton(enabled);
+            if (originalOnMeasurementModeChange) originalOnMeasurementModeChange(enabled);
+        };
     }
 
     updateLightButton() {
@@ -278,6 +292,19 @@ export class DefaultUI {
         const btn = this.buttons.get('camera');
         if (btn) {
             btn.style.opacity = isOrthographic ? '0.7' : '1';
+        }
+    }
+
+    updateMeasureButton(enabled: boolean) {
+        const btn = this.buttons.get('measure');
+        if (btn) {
+            if (enabled) {
+                btn.style.backgroundColor = '#198754';
+                btn.style.color = 'white';
+            } else {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }
         }
     }
 

@@ -24,6 +24,7 @@
  *   - **{@link LightingManager}**: Manages scene lighting and environment maps.
  *   - **{@link CameraManager}**: Handles camera switching (Persp/Ortho) and controls.
  *   - **{@link AnnotationManager}**: Manages 3D annotations and their lifecycle.
+ *   - **{@link MeasurementManager}**: Manages modal two-point distance measurements.
  * 
  * ### Dependency Injection
  * 
@@ -70,6 +71,13 @@ export type {
   SelectionChangeCallback,
   PointPickedCallback
 } from './types/AnnotationTypes';
+
+// Export measurement system
+export { MeasurementManager } from './managers/MeasurementManager';
+export type {
+  MeasurementConfig,
+  MeasurementRecord
+} from './managers/MeasurementManager';
 
 // Export file URL resolvers
 export type {

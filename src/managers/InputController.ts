@@ -14,6 +14,8 @@ export interface InputControllerConfig {
   getAnnotations: () => THREE.Object3D[]; // Returns markers
   /** Called when user double-clicks on a 3D model */
   onModelDoubleClick: (point: THREE.Vector3) => void;
+  /** Called when user single-clicks on a 3D model (used by modal tools like measurement) */
+  onModelClick?: (point: THREE.Vector3) => void;
   /** Called when user clicks on an annotation marker */
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
   /** Called when user clicks on empty space (background) */
@@ -55,6 +57,7 @@ export class InputController {
   private raycaster = new THREE.Raycaster();
   private mouse = new THREE.Vector2();
   private isPickingMode = false;
+  private isMeasurementMode = false;
   private enabled = true;
 
   constructor(private config: InputControllerConfig) {
@@ -79,11 +82,20 @@ export class InputController {
 
   setPickingMode(enabled: boolean) {
     this.isPickingMode = enabled;
-    this.config.domElement.style.cursor = enabled ? 'crosshair' : 'auto';
+    this.updateCursor();
+  }
+
+  setMeasurementMode(enabled: boolean) {
+    this.isMeasurementMode = enabled;
+    this.updateCursor();
   }
 
   isPickingEnabled(): boolean {
     return this.isPickingMode;
+  }
+
+  isMeasurementEnabled(): boolean {
+    return this.isMeasurementMode;
   }
 
   setEnabled(enabled: boolean) {
@@ -99,26 +111,14 @@ export class InputController {
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
-  handleResize() {
-    // Input controller currently doesn't need to do much on resize 
-    // as it calculates mouse position relative to rect on every event.
+  private updateCursor() {
+    this.config.domElement.style.cursor = (this.isPickingMode || this.isMeasurementMode) ? 'crosshair' : 'auto';
   }
 
-  handleDoubleClick(event: MouseEvent) {
-    if (!this.enabled) return;
-
-    this.updateMouseCoordinates(event);
-    this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
-
-    // Raycast against models
+  private getModelIntersectionPoint(): THREE.Vector3 | null {
     const models = this.config.getModels();
     const modelObjects: THREE.Object3D[] = [];
-    
-    // Flatten hierarchy for safety, or assume getModels returns roots and we interact with children?
-    // ThreePresenter logic was:
-    // Object.values(models).forEach(model => model.traverse(child => if Mesh push))
-    // We should replicate that or expect the getter to do it?
-    // Let's do it here for safety if getModels returns roots.
+
     models.forEach(model => {
       model.traverse((child) => {
         if (child instanceof THREE.Mesh) {
@@ -128,22 +128,41 @@ export class InputController {
     });
 
     const intersects = this.raycaster.intersectObjects(modelObjects, false);
+    return intersects.length > 0 ? intersects[0].point : null;
+  }
 
-    if (intersects.length > 0) {
-      const point = intersects[0].point;
+  handleResize() {
+    // Input controller currently doesn't need to do much on resize 
+    // as it calculates mouse position relative to rect on every event.
+  }
+
+  handleDoubleClick(event: MouseEvent) {
+    if (!this.enabled) return;
+    if (this.isMeasurementMode) return; // measurement uses single click picks
+
+    this.updateMouseCoordinates(event);
+    this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    const point = this.getModelIntersectionPoint();
+    if (point) {
       this.config.onModelDoubleClick(point);
     }
   }
 
   handleClick(event: MouseEvent) {
     if (!this.enabled) return;
-    
-    // In picking mode, single clicks are ignored (waiting for double click) OR handled differently?
-    // ThreePresenter ignored single clicks in picking mode.
-    if (this.isPickingMode) return;
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+
+    // Measurement mode: pick points directly on models with single click
+    if (this.isMeasurementMode) {
+      const point = this.getModelIntersectionPoint();
+      if (point) this.config.onModelClick?.(point);
+      return;
+    }
+
+    // Annotation picking mode uses double-click on model points only
+    if (this.isPickingMode) return;
 
     // Check Annotations
     const markers = this.config.getAnnotations();

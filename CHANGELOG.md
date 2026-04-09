@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New smoke asset bundle under `docs/assets/smoke/` and demo page `08-obj-textured.html`.
 - `npm run smoke:assets` and `npm run smoke` commands for quick smoke validation.
 - `npm run build:docs` and `npm run serve:docs` commands for local docs testing.
+- `MeasurementManager` with modal two-click distance measuring (`line + label + point markers`).
+- New `10-measurements.html` example and `measure` button support in `DefaultUI`.
+- Annotation payload now supports optional `text` and optional `normal` metadata.
+- `parseIIIFManifest()` now extracts non-painting point annotations (label/text/position) and maps optional point normals from IIIF selectors.
 
 ### Fixed
 - `DefaultUI` now correctly unregisters the `fullscreenchange` listener in `dispose()`.

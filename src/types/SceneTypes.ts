@@ -28,10 +28,17 @@ export interface Annotation {
   id: string;
   /** User-visible label/name for the annotation */
   label: string;
+  /** Optional longer annotation text/description */
+  text?: string;
   /** Type of annotation */
   type: AnnotationType;
   /** Geometric data for the annotation */
   geometry: AnnotationGeometry;
+  /**
+   * Optional normal vector for point annotations.
+   * Primarily used by IIIF 3D point selectors when available.
+   */
+  normal?: [number, number, number];
   /** Optional creation timestamp */
   createdAt?: string;
   /** Optional user who created it */

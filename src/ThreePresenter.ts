@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { AnnotationManager } from './managers/AnnotationManager';
+import { MeasurementManager, type MeasurementRecord } from './managers/MeasurementManager';
 import type { FileUrlResolver } from './types/FileUrlResolver';
 import { StaticBaseUrlResolver } from './types/FileUrlResolver';
 import { calculateObjectStats, type GeometryStats } from './utils/GeometryUtils';
@@ -19,6 +21,7 @@ import type {
 
 export type { SceneDescription, ModelDefinition, PresenterState };
 export { AnnotationManager };
+export type { MeasurementRecord };
 
 /**
  * Configuration options for ThreePresenter
@@ -33,6 +36,7 @@ export interface ThreePresenterConfig {
     modelLoader?: ModelLoader;
     lightingManager?: LightingManager;
     cameraManager?: CameraManager;
+    measurementManager?: MeasurementManager;
     renderLoop?: RenderLoop;
     // InputController and AnnotationManager are tightly coupled to the scene/renderer currently
   };
@@ -77,6 +81,7 @@ export interface LoadingProgress {
  */
 export class ThreePresenter {
   renderer: THREE.WebGLRenderer;
+  labelRenderer: CSS2DRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   orthographicCamera: THREE.OrthographicCamera | null = null;
@@ -97,11 +102,14 @@ export class ThreePresenter {
   scaleIndicator: ScaleIndicator | null = null;
   viewportGizmo: any = null;
   isPickingMode: boolean = false;
+  isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
+  onMeasurementCreated?: (measurement: MeasurementRecord) => void;
   // State change callbacks
   onLightChange?: (enabled: boolean) => void;
   onEnvChange?: (enabled: boolean) => void;
   onPickingModeChange?: (enabled: boolean) => void;
+  onMeasurementModeChange?: (enabled: boolean) => void;
   onCameraModeChange?: (isOrthographic: boolean) => void;
   initialCameraPosition: THREE.Vector3 = new THREE.Vector3(0, 0, 2);
   initialControlsTarget: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
@@ -119,6 +127,7 @@ export class ThreePresenter {
 
   // Managers
   private annotationManager: AnnotationManager;
+  private measurementManager: MeasurementManager;
   private cameraManager: CameraManager;
   private lightingManager: LightingManager;
   private modelLoader: ModelLoader;
@@ -181,7 +190,20 @@ export class ThreePresenter {
     this.renderer.setSize(widthPx, heightPx);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
+
+    if (getComputedStyle(this.mount).position === 'static') {
+      this.mount.style.position = 'relative';
+    }
     this.mount.appendChild(this.renderer.domElement);
+
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(widthPx, heightPx);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.left = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    this.labelRenderer.domElement.style.zIndex = '10';
+    this.mount.appendChild(this.labelRenderer.domElement);
 
     // Filter out injected managers for initialization of other managers if needed
 
@@ -206,6 +228,13 @@ export class ThreePresenter {
       selectedColor: 0xffff66,
       markerSize: 10
     });
+    this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
+      unit: 'units',
+      precision: 3,
+      lineColor: 0x00e0ff,
+      pointColor: 0x00e0ff,
+      pointRadius: 0.01
+    });
 
     // Load environment map
     this.loadEnvironmentMap();
@@ -225,6 +254,14 @@ export class ThreePresenter {
         } else {
           console.log('🎯 Recentering camera on point:', point);
           this.animateCameraTarget(point);
+        }
+      },
+      onModelClick: (point: THREE.Vector3) => {
+        if (!this.isMeasurementMode) return;
+        const measurement = this.measurementManager.addPoint(point);
+        if (measurement) {
+          console.log(`📏 Measurement created: ${measurement.label}`);
+          this.onMeasurementCreated?.(measurement);
         }
       },
       onAnnotationClick: (object, isMulti) => {
@@ -256,6 +293,7 @@ export class ThreePresenter {
     this.renderLoop.dispose();
     this.inputController.dispose();
     this.annotationManager.dispose();
+    this.measurementManager.dispose();
     this.lightingManager.dispose();
     this.modelLoader.dispose();
 
@@ -265,6 +303,9 @@ export class ThreePresenter {
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+    }
+    if (this.labelRenderer && this.labelRenderer.domElement.parentNode) {
+      this.labelRenderer.domElement.parentNode.removeChild(this.labelRenderer.domElement);
     }
 
     if (this.viewportGizmo && this.viewportGizmo.dispose) {
@@ -278,6 +319,7 @@ export class ThreePresenter {
     const h = this.mount.clientHeight;
 
     this.renderer.setSize(w, h);
+    this.labelRenderer.setSize(w, h);
 
     // Use camera manager to handle resize for both cameras
     this.cameraManager.handleResize(w, h);
@@ -306,8 +348,10 @@ export class ThreePresenter {
    * Enter picking mode
    */
   private enterPickingMode() {
+    if (this.isMeasurementMode) this.exitMeasurementMode();
     this.isPickingMode = true;
     this.inputController.setPickingMode(true);
+    this.inputController.setMeasurementMode(false);
     this.onPickingModeChange?.(true);
     console.log('✏️ Entered picking mode - double-click on model to pick a point');
   }
@@ -320,6 +364,40 @@ export class ThreePresenter {
     this.inputController.setPickingMode(false);
     this.onPickingModeChange?.(false);
     console.log('✅ Exited picking mode');
+  }
+
+  /**
+   * Toggle measurement mode (two-click distance tool)
+   */
+  toggleMeasurementMode() {
+    if (this.isMeasurementMode) {
+      this.exitMeasurementMode();
+    } else {
+      this.enterMeasurementMode();
+    }
+  }
+
+  /**
+   * Enter measurement mode
+   */
+  enterMeasurementMode() {
+    if (this.isPickingMode) this.exitPickingMode();
+    this.isMeasurementMode = true;
+    this.inputController.setMeasurementMode(true);
+    this.inputController.setPickingMode(false);
+    this.onMeasurementModeChange?.(true);
+    console.log('📏 Entered measurement mode - click two points on model');
+  }
+
+  /**
+   * Exit measurement mode
+   */
+  exitMeasurementMode() {
+    this.isMeasurementMode = false;
+    this.inputController.setMeasurementMode(false);
+    this.measurementManager.cancelPending();
+    this.onMeasurementModeChange?.(false);
+    console.log('✅ Exited measurement mode');
   }
 
   /**
@@ -373,6 +451,7 @@ export class ThreePresenter {
     });
 
     this.renderer.render(this.scene, this.camera);
+    this.labelRenderer.render(this.scene, this.camera);
 
     // Render viewport gizmo if present
     if (this.viewportGizmo && typeof this.viewportGizmo.render === 'function') {
@@ -505,6 +584,7 @@ export class ThreePresenter {
    * Clear all models from the scene
    */
   private clearScene(): void {
+    this.measurementManager.clear();
     Object.values(this.models).forEach(model => {
       this.scene.remove(model);
     });
@@ -1004,6 +1084,27 @@ export class ThreePresenter {
    */
   getAnnotationManager(): AnnotationManager {
     return this.annotationManager;
+  }
+
+  /**
+   * Get the measurement manager instance for direct access to measurement API
+   */
+  getMeasurementManager(): MeasurementManager {
+    return this.measurementManager;
+  }
+
+  /**
+   * Remove all measurement visuals from the scene
+   */
+  clearMeasurements(): void {
+    this.measurementManager.clear();
+  }
+
+  /**
+   * Read current persistent measurements
+   */
+  getMeasurements(): MeasurementRecord[] {
+    return this.measurementManager.getAll();
   }
 
   /**

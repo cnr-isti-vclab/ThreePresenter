@@ -18,8 +18,8 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-unified.js",
-    "build": "vite build && node scripts/generate-examples.js",
-    "build:docs": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/",
+    "build": "vite build && node scripts/generate-examples.js && mkdir -p docs/dist && cp -r dist/* docs/dist/",
+    "build:docs": "npm run build",
     "serve:docs": "http-server docs -p 8080",
     "deploy": "npm run build:docs && typedoc",
     "smoke:assets": "node scripts/smoke-assets.js",
