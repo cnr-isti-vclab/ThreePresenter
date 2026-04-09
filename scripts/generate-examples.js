@@ -25,7 +25,8 @@ const examples = [
   { id: '04-scale-indicator', title: 'Scale Indicator', description: 'Ground plane with scale bar' },
   { id: '05-nexus', title: 'Nexus Multiresolution', description: 'Progressive streaming NXZ' },
   { id: '06-iiif-manifest', title: 'IIIF-3D Manifest', description: 'Loads a scene from a **[IIIF Presentation API 4](https://iiif.io/api/3d/)** manifest using `parseIIIFManifest()`' },
-  { id: '07-external-controls', title: 'External Controls', description: 'Two models loaded side-by-side, with external buttons that toggle each model\'s visibility independently' }
+  { id: '07-external-controls', title: 'External Controls', description: 'Two models loaded side-by-side, with external buttons that toggle each model\'s visibility independently' },
+  { id: '08-obj-textured', title: 'OBJ + MTL + Texture', description: 'Loads an OBJ model with external **MTL** and texture files from the smoke asset set' }
 ];
 
 const examplesJson = examples.map(ex => {

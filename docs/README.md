@@ -20,20 +20,14 @@ docs/
 
 ```bash
 cd ..
-npm run build
+npm run build:docs
 ```
 
-### 2. Copy built files to docs/dist/
-
-```bash
-cp -r dist/* docs/dist/
-```
-
-### 3. Add your 3D models
+### 2. Add your 3D models
 
 Copy your `.glb`, `.ply`, or other model files to `docs/assets/`
 
-### 4. Enable GitHub Pages
+### 3. Enable GitHub Pages
 
 1. Go to your repo on GitHub
 2. Settings → Pages
@@ -42,7 +36,7 @@ Copy your `.glb`, `.ply`, or other model files to `docs/assets/`
 5. Folder: `/docs`
 6. Save
 
-### 5. Access your demo
+### 4. Access your demo
 
 Your demo will be live at:
 ```
@@ -54,13 +48,10 @@ https://cnr-isti-vclab.github.io/ThreePresenter/
 Whenever you make changes:
 
 ```bash
-# 1. Build the library
-npm run build
+# 1. Build docs bundle
+npm run build:docs
 
-# 2. Copy to docs
-cp -r dist/* docs/dist/
-
-# 3. Commit and push
+# 2. Commit and push
 git add docs/
 git commit -m "Update demo"
 git push
@@ -73,10 +64,10 @@ GitHub Pages will automatically rebuild in a few minutes.
 Before pushing, test locally:
 
 ```bash
-npx serve docs
+npm run serve:docs
 ```
 
-Open http://localhost:3000
+Open http://localhost:8080
 
 ## Automation (Optional)
 
@@ -85,8 +76,8 @@ Add this to your package.json scripts:
 ```json
 {
   "scripts": {
-    "build:demo": "npm run build && cp -r dist/* docs/dist/",
-    "serve:demo": "serve docs"
+    "build:demo": "npm run build:docs",
+    "serve:demo": "npm run serve:docs"
   }
 }
 ```

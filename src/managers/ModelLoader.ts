@@ -42,7 +42,7 @@ export interface LoadResult {
   /** The loaded Three.js object */
   object: THREE.Object3D;
   /** The original format that was loaded */
-  format: 'ply' | 'gltf' | 'glb' | 'nxs' | 'nxz';
+  format: 'ply' | 'gltf' | 'glb' | 'obj' | 'nxs' | 'nxz';
   /** Size of the loaded data in bytes */
   byteSize: number;
 }
@@ -54,6 +54,7 @@ export interface LoadResult {
  * - PLY (Polygon File Format)
  * - GLTF (GL Transmission Format)
  * - GLB (GLTF Binary)
+ * - OBJ (Wavefront OBJ)
  * 
  * Features:
  * - Automatic format detection from file extension
@@ -94,6 +95,11 @@ export interface LoadResult {
  *   GLTF scene. Materials can be overridden via `materialOverrides`. The loader
  *   does not normalize or re-center GLTF models — transforms defined in the file
  *   are preserved as-is.
+ *
+ * - parseOBJ: parses Wavefront OBJ data into a THREE.Group. If the OBJ declares
+ *   an `mtllib` entry and a base URL is available, the loader also loads the MTL
+ *   and its texture references before parsing, so textured OBJ assets work with
+ *   relative paths.
  *
  * - parseNexus (NXS / NXZ): Nexus is a streaming, multi-resolution format. This
  *   loader returns a Promise that resolves once the Nexus `onLoad` event has
@@ -210,14 +216,14 @@ export class ModelLoader {
    * Load a model from an ArrayBuffer.
    * 
    * @param buffer ArrayBuffer containing the model data
-   * @param format File format ('ply', 'gltf', 'glb', 'nxs', or 'nxz')
+   * @param format File format ('ply', 'gltf', 'glb', 'obj', 'nxs', or 'nxz')
    * @param materialOverrides Optional material property overrides
    * @param url Optional URL for streaming formats like NXS
    * @returns Promise resolving to load result
    */
   async loadFromBuffer(
     buffer: ArrayBuffer,
-    format: 'ply' | 'gltf' | 'glb' | 'nxs' | 'nxz',
+    format: 'ply' | 'gltf' | 'glb' | 'obj' | 'nxs' | 'nxz',
     materialOverrides?: MaterialProperties | THREE.Material,
     url?: string
   ): Promise<LoadResult> {
@@ -237,6 +243,9 @@ export class ModelLoader {
       case 'gltf':
       case 'glb':
         object = await this.parseGLTF(buffer, materialOverrides as any);
+        break;
+      case 'obj':
+        object = await this.parseOBJ(buffer, materialOverrides as any, baseDir);
         break;
       case 'nxs':
       case 'nxz':
@@ -262,7 +271,7 @@ export class ModelLoader {
    * @param filename Filename or URL
    * @returns Detected format
    */
-  detectFormat(filename: string): 'ply' | 'gltf' | 'glb' | 'nxs' | 'nxz' {
+  detectFormat(filename: string): 'ply' | 'gltf' | 'glb' | 'obj' | 'nxs' | 'nxz' {
     const lower = filename.toLowerCase();
 
     if (lower.endsWith('.ply')) {
@@ -271,6 +280,8 @@ export class ModelLoader {
       return 'glb';
     } else if (lower.endsWith('.gltf')) {
       return 'gltf';
+    } else if (lower.endsWith('.obj')) {
+      return 'obj';
     } else if (lower.endsWith('.nxs')) {
       return 'nxs';
     } else if (lower.endsWith('.nxz')) {
@@ -459,21 +470,7 @@ export class ModelLoader {
           const group = gltf.scene;
 
           // Apply material overrides if specified
-          if (materialOverrides) {
-            group.traverse((child: any) => {
-              if ((child as THREE.Mesh).isMesh) {
-                // Apply material overrides
-                if ((materialOverrides as any).isMaterial) {
-                  (child as THREE.Mesh).material = materialOverrides as THREE.Material;
-                } else if ((child as THREE.Mesh).material) {
-                  this.applyMaterialOverrides(
-                    (child as THREE.Mesh).material as THREE.Material,
-                    materialOverrides as MaterialProperties
-                  );
-                }
-              }
-            });
-          }
+          this.applyMaterialOverridesToObject(group, materialOverrides);
 
           // Note: GLTF/GLB loader does not perform normalization or centering.
           // The returned group preserves transforms defined in the file. Use
@@ -486,6 +483,45 @@ export class ModelLoader {
         }
       );
     });
+  }
+
+  /**
+   * Parse OBJ format buffer.
+   * @param buffer ArrayBuffer containing OBJ text data
+   * @param materialOverrides Optional material overrides
+   * @returns Promise resolving to Three.js Group
+   */
+  private async parseOBJ(
+    buffer: ArrayBuffer,
+    materialOverrides?: MaterialProperties | THREE.Material,
+    baseDir?: string
+  ): Promise<THREE.Group> {
+    const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+    const objLoader = new OBJLoader();
+
+    const objText = new TextDecoder().decode(buffer);
+
+    // If OBJ declares a material library and we have a base dir, load it so
+    // textures referenced by the MTL (e.g. map_Kd) can be resolved correctly.
+    if (baseDir) {
+      const mtlMatch = objText.match(/^\s*mtllib\s+(.+)$/m);
+      const mtlFile = mtlMatch?.[1]?.trim();
+      if (mtlFile) {
+        try {
+          const { MTLLoader } = await import('three/addons/loaders/MTLLoader.js');
+          const mtlLoader = new MTLLoader();
+          const materials = await mtlLoader.loadAsync(baseDir + mtlFile);
+          materials.preload();
+          objLoader.setMaterials(materials);
+        } catch (err) {
+          console.warn(`⚠️ Failed to load MTL '${mtlFile}' for OBJ; continuing without it`, err);
+        }
+      }
+    }
+
+    const group = objLoader.parse(objText);
+    this.applyMaterialOverridesToObject(group, materialOverrides);
+    return group;
   }
 
   /**
@@ -663,7 +699,7 @@ export class ModelLoader {
     const mat = material as any;
 
     if (mat.color && overrides.color !== undefined) {
-      mat.color = new THREE.Color(overrides.color);
+      mat.color.set(overrides.color);
     }
 
     if (mat.metalness !== undefined && overrides.metalness !== undefined) {
@@ -678,6 +714,47 @@ export class ModelLoader {
       mat.flatShading = overrides.flatShading;
       mat.needsUpdate = true;
     }
+  }
+
+  /**
+   * Apply material overrides to all meshes in an object hierarchy.
+   * Creates a default material for meshes without one when only properties are provided.
+   */
+  private applyMaterialOverridesToObject(
+    object: THREE.Object3D,
+    materialOverrides?: MaterialProperties | THREE.Material
+  ): void {
+    if (!materialOverrides) return;
+
+    const isRuntimeMaterial = !!(materialOverrides as any).isMaterial;
+    const runtimeMaterial = isRuntimeMaterial ? materialOverrides as THREE.Material : null;
+    const materialProps = !isRuntimeMaterial ? materialOverrides as MaterialProperties : null;
+
+    object.traverse((child: THREE.Object3D) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+
+      const mesh = child as THREE.Mesh;
+
+      if (runtimeMaterial) {
+        mesh.material = runtimeMaterial;
+        return;
+      }
+
+      const props = materialProps || {};
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach((mat: THREE.Material) => this.applyMaterialOverrides(mat, props));
+      } else if (mesh.material) {
+        this.applyMaterialOverrides(mesh.material as THREE.Material, props);
+      } else {
+        const merged = this.mergeMaterialProperties(this.config.defaultMaterial, props);
+        mesh.material = new THREE.MeshStandardMaterial({
+          color: merged.color,
+          metalness: merged.metalness,
+          roughness: merged.roughness,
+          flatShading: merged.flatShading
+        });
+      }
+    });
   }
 
   /**

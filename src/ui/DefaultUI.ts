@@ -52,6 +52,14 @@ export class DefaultUI {
     fullscreenContainer: HTMLDivElement;
     buttons: Map<string, HTMLButtonElement>;
     private envLightingEnabled: boolean = true;
+    private lightPresetIndex: number = -1;
+    private readonly lightPositionPresets: Array<{ theta: number; phi: number; label: string }> = [
+        { theta: 0, phi: 0, label: 'Frontal' },
+        { theta: 30, phi: 15, label: 'Top-right' },
+        { theta: -30, phi: 15, label: 'Top-left' },
+        { theta: 180, phi: 10, label: 'Back light' }
+    ];
+    private readonly onFullscreenChange = () => this.updateFullscreenButton();
 
     constructor(private presenter: ThreePresenter, config: DefaultUIConfig = {}) {
         const buttonConfigs: ButtonConfig[] = [
@@ -81,8 +89,8 @@ export class DefaultUI {
             <i class="bi bi-arrows-move" style="position: absolute; font-size: 32px; top: -16px; left: -8px;"></i>
           </div>
         `,
-                title: 'Position headlight',
-                onClick: () => { }, // TODO: Add light positioning functionality
+                title: 'Cycle headlight direction',
+                onClick: () => this.cycleLightPosition(),
                 visible: false
             },
             {
@@ -168,7 +176,8 @@ export class DefaultUI {
         this.attachListeners();
 
         // Listen for fullscreen changes (e.g., user presses ESC)
-        document.addEventListener('fullscreenchange', () => this.updateFullscreenButton());
+        document.addEventListener('fullscreenchange', this.onFullscreenChange);
+        this.updateFullscreenButton();
     }
 
     private toggleFullscreen() {
@@ -189,6 +198,17 @@ export class DefaultUI {
             btn.innerHTML = isFullscreen 
                 ? '<i class="bi bi-fullscreen-exit"></i>' 
                 : '<i class="bi bi-fullscreen"></i>';
+        }
+    }
+
+    private cycleLightPosition() {
+        this.lightPresetIndex = (this.lightPresetIndex + 1) % this.lightPositionPresets.length;
+        const preset = this.lightPositionPresets[this.lightPresetIndex];
+        this.presenter.setHeadLightOffset(preset.theta, preset.phi);
+
+        const btn = this.buttons.get('lightPosition');
+        if (btn) {
+            btn.title = `Headlight: ${preset.label} (${preset.theta}\u00b0, ${preset.phi}\u00b0)`;
         }
     }
 
@@ -277,6 +297,6 @@ export class DefaultUI {
         if (this.fullscreenContainer.parentNode) {
             this.fullscreenContainer.parentNode.removeChild(this.fullscreenContainer);
         }
-        document.removeEventListener('fullscreenchange', () => this.updateFullscreenButton());
+        document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     }
 }

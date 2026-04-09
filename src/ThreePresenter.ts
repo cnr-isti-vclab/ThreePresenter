@@ -598,6 +598,11 @@ export class ThreePresenter {
       this.scene.background = new THREE.Color(env.background);
     }
 
+    // Handle head light offset (degrees)
+    if (Array.isArray(env.headLightOffset) && env.headLightOffset.length === 2) {
+      this.setHeadLightOffset(env.headLightOffset[0], env.headLightOffset[1]);
+    }
+
     // Handle scale indicator
     this.removeScaleIndicator();
     if (env.scaleIndicator?.enabled) {

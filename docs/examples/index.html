@@ -42,9 +42,27 @@
   <script>
     let examples = [];
 
+    function buildExamplesJsonUrl() {
+      // Works for:
+      // - /examples/index.html
+      // - /examples
+      // - /docs/examples/index.html
+      // - /ThreePresenter/examples/index.html (GitHub Pages project path)
+      const path = window.location.pathname;
+      const marker = '/examples';
+      const idx = path.indexOf(marker);
+      const basePath = idx >= 0 ? path.slice(0, idx) : '';
+      return `${basePath}/examples/examples.json`;
+    }
+
     // Load examples from JSON
-    fetch('examples.json')
-      .then(r => r.json())
+    fetch(buildExamplesJsonUrl())
+      .then(r => {
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status} while fetching examples.json`);
+        }
+        return r.json();
+      })
       .then(data => {
         examples = data.examples ?? data;
         renderExamplesList();
@@ -52,7 +70,7 @@
       })
       .catch(err => {
         console.error('Failed to load examples:', err);
-        document.getElementById('examplesList').innerHTML = '<div style="padding: 20px; color: #e74c3c;">Failed to load examples</div>';
+        document.getElementById('examplesList').innerHTML = `<div style="padding: 20px; color: #e74c3c;">Failed to load examples (${err.message})</div>`;
       });
 
     let currentExample = null;

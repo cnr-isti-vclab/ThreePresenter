@@ -18,8 +18,12 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-unified.js",
-    "build": "vite build",
-    "deploy": "npm run build && typedoc && mkdir -p docs/dist && cp -r dist/* docs/dist/ && node scripts/generate-examples.js"
+    "build": "vite build && node scripts/generate-examples.js",
+    "build:docs": "npm run build && mkdir -p docs/dist && cp -r dist/* docs/dist/",
+    "serve:docs": "http-server docs -p 8080",
+    "deploy": "npm run build:docs && typedoc",
+    "smoke:assets": "node scripts/smoke-assets.js",
+    "smoke": "npm run build && npm run smoke:assets"
   },
   "keywords": [
     "three.js",

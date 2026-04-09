@@ -98,6 +98,8 @@ export interface EnvironmentSettings {
   showGround?: boolean;
   /** Background color as hex string (e.g., "#404040") */
   background?: string;
+  /** Optional head light offset in degrees as [horizontal, vertical] */
+  headLightOffset?: [number, number];
   /** Scale indicator configuration for measuring objects */
   scaleIndicator?: {
     /** Whether to show the scale indicator ruler */

@@ -49,7 +49,10 @@ npm run dev      # Watch src/ + auto-rebuild + serve at localhost:8080
 Other available commands:
 ```bash
 npm run build    # Build library for npm
+npm run build:docs   # Build library + refresh docs/dist + examples.json
+npm run serve:docs   # Serve docs locally at localhost:8080
 npm run deploy   # Build everything for GitHub Pages
+npm run smoke    # Build + run smoke asset checks
 ```
 View examples at `http://localhost:8080/docs/` while `npm run dev` is running.
 

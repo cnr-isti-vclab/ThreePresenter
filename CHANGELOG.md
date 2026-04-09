@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Restored OBJ model support in `ModelLoader` (`.obj` detection and parsing).
+- `EnvironmentSettings.headLightOffset` typed support and runtime application in `ThreePresenter`.
+- `DefaultUI` light-position button now cycles practical headlight presets.
+- New smoke asset bundle under `docs/assets/smoke/` and demo page `08-obj-textured.html`.
+- `npm run smoke:assets` and `npm run smoke` commands for quick smoke validation.
+- `npm run build:docs` and `npm run serve:docs` commands for local docs testing.
+
+### Fixed
+- `DefaultUI` now correctly unregisters the `fullscreenchange` listener in `dispose()`.
+- OBJ loader now resolves `mtllib` references, so `OBJ + MTL + texture` assets load correctly.
+- `npm run build` now regenerates `docs/examples/examples.json` to avoid missing examples metadata in local preview.
+- Examples page now resolves `examples.json` robustly across local and GitHub Pages paths.
+
 ## [0.1.2] - 2026-02-19
 
 ### Added
@@ -33,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three.js viewport gizmo integration.
 - GitHub Pages deployment via GitHub Actions.
 
+[Unreleased]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/cnr-isti-vclab/ThreePresenter/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cnr-isti-vclab/ThreePresenter/releases/tag/v0.1.0
