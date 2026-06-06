@@ -224,8 +224,8 @@ export class ThreePresenter {
     // Initialize annotation manager (internal)
     // AnnotationManager takes (scene, config)
     this.annotationManager = new AnnotationManager(this.scene, {
-      color: 0xffff00,
-      selectedColor: 0xffff66,
+      color: 0xffffff,
+      selectedColor: 0x1e3a8a,
       markerSize: 10
     });
     this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
@@ -246,17 +246,17 @@ export class ThreePresenter {
       getModels: () => Object.values(this.models),
       getAnnotations: () => this.annotationManager.getAllMarkers(),
       onModelDoubleClick: (point: THREE.Vector3) => {
+        console.log('🎯 Recentering camera on point:', point);
+        this.animateCameraTarget(point);
+      },
+      onModelClick: (point: THREE.Vector3) => {
         if (this.isPickingMode) {
           const coords: [number, number, number] = [point.x, point.y, point.z];
           console.log('📍 Picked 3D point:', coords.map(v => v.toFixed(4)));
           this.onPointPicked?.(coords);
           this.exitPickingMode();
-        } else {
-          console.log('🎯 Recentering camera on point:', point);
-          this.animateCameraTarget(point);
+          return;
         }
-      },
-      onModelClick: (point: THREE.Vector3) => {
         if (!this.isMeasurementMode) return;
         const measurement = this.measurementManager.addPoint(point);
         if (measurement) {
@@ -273,7 +273,14 @@ export class ThreePresenter {
       },
       onBackgroundClick: (isMulti) => {
         if (!isMulti) this.annotationManager.clearSelection();
-      }
+      },
+      onAnnotationDragStart: (object) => this.annotationManager.beginPointEditFromMarker(object),
+      onAnnotationDragMove: (point) => {
+        this.annotationManager.moveActivePoint([point.x, point.y, point.z]);
+      },
+      onAnnotationDragEnd: () => {
+        this.annotationManager.endPointEdit();
+      },
     });
 
     // Render Loop setup
@@ -345,6 +352,27 @@ export class ThreePresenter {
   }
 
   /**
+   * Explicitly enable or disable picking mode.
+   */
+  setPickingMode(enabled: boolean) {
+    if (enabled === this.isPickingMode) {
+      return;
+    }
+    if (enabled) {
+      this.enterPickingMode();
+    } else {
+      this.exitPickingMode();
+    }
+  }
+
+  /**
+   * Read current picking mode state.
+   */
+  getPickingMode(): boolean {
+    return this.isPickingMode;
+  }
+
+  /**
    * Enter picking mode
    */
   private enterPickingMode() {
@@ -353,7 +381,7 @@ export class ThreePresenter {
     this.inputController.setPickingMode(true);
     this.inputController.setMeasurementMode(false);
     this.onPickingModeChange?.(true);
-    console.log('✏️ Entered picking mode - double-click on model to pick a point');
+    console.log('✏️ Entered picking mode - click on model to pick a point');
   }
 
   /**

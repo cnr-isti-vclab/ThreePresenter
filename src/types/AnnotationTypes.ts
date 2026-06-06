@@ -26,6 +26,7 @@ export interface Annotation {
   id: string;
   label: string;
   text?: string;
+  description?: string;
   type: AnnotationType;
   geometry: AnnotationGeometry;
   /**
@@ -35,6 +36,7 @@ export interface Annotation {
   normal?: [number, number, number];
   createdAt?: string;
   updatedAt?: string;
+  createdBy?: string;
 }
 
 /**
@@ -53,6 +55,18 @@ export interface AnnotationConfig {
   markerSize?: number;
   /** Sphere geometry segments (lower = better performance) */
   sphereSegments?: number;
+  /** Fill color for point markers (hex) */
+  pointFillColor?: number;
+  /** Stroke color for point markers (hex) */
+  pointStrokeColor?: number;
+  /** Fill color for selected point markers (hex) */
+  selectedPointFillColor?: number;
+  /** Stroke color for selected point markers (hex) */
+  selectedPointStrokeColor?: number;
+  /** Stroke width for point markers in texture pixels */
+  pointStrokeWidth?: number;
+  /** Point marker shadow alpha (0-1) */
+  pointShadowOpacity?: number;
 }
 
 /**
@@ -64,3 +78,8 @@ export type SelectionChangeCallback = (selectedIds: string[]) => void;
  * Callback type for annotation picking (point selection on model)
  */
 export type PointPickedCallback = (point: [number, number, number]) => void;
+
+/**
+ * Callback type for annotation geometry edit lifecycle.
+ */
+export type AnnotationEditCallback = (annotation: Annotation) => void;

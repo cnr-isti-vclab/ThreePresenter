@@ -30,6 +30,8 @@ export interface Annotation {
   label: string;
   /** Optional longer annotation text/description */
   text?: string;
+  /** Optional description aligned with OCRA viewer DTOs. */
+  description?: string;
   /** Type of annotation */
   type: AnnotationType;
   /** Geometric data for the annotation */

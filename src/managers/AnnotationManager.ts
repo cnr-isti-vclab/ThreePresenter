@@ -30,7 +30,8 @@ import type {
   Annotation,
   AnnotationConfig,
   SelectionChangeCallback,
-  PointPickedCallback
+  PointPickedCallback,
+  AnnotationEditCallback,
 } from '../types/AnnotationTypes';
 
 /**
@@ -42,8 +43,17 @@ const DEFAULT_CONFIG: Required<AnnotationConfig> = {
   opacity: 0.9,              // Slightly transparent
   selectedOpacity: 1.0,      // Fully opaque
   markerSize: 10,            // 10 pixels
-  sphereSegments: 16         // Good balance of quality/performance
+  sphereSegments: 16,        // Good balance of quality/performance
+  pointFillColor: 0x000000,
+  pointStrokeColor: 0xffffff,
+  selectedPointFillColor: 0xdbeafe,
+  selectedPointStrokeColor: 0x1e3a8a,
+  pointStrokeWidth: 6,
+  pointShadowOpacity: 0.8,
 };
+
+const POINT_TEXTURE_SIZE = 128;
+const POINT_TEXTURE_RADIUS = 24;
 
 /**
  * AnnotationManager - Manages annotation markers in a Three.js scene
@@ -53,12 +63,16 @@ export class AnnotationManager {
   private config: Required<AnnotationConfig>;
   
   // Annotation state
-  private markers: Map<string, THREE.Mesh> = new Map();
+  private markers: Map<string, THREE.Object3D> = new Map();
+  private annotations: Map<string, Annotation> = new Map();
   private selectedIds: Set<string> = new Set();
+  private activePointEditId: string | null = null;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
   private pickCallback: PointPickedCallback | null = null;
+  private editStartCallbacks: AnnotationEditCallback[] = [];
+  private updateCallbacks: AnnotationEditCallback[] = [];
   
   /**
    * Create a new AnnotationManager
@@ -75,6 +89,7 @@ export class AnnotationManager {
    * @param annotations - Array of annotations to render
    */
   render(annotations: Annotation[]): void {
+    this.annotations = new Map(annotations.map((annotation) => [annotation.id, this.cloneAnnotation(annotation)]));
     // Remove markers that no longer exist
     const currentIds = new Set(annotations.map(a => a.id));
     for (const [id] of this.markers.entries()) {
@@ -85,22 +100,17 @@ export class AnnotationManager {
 
     // Add or update markers
     annotations.forEach(annotation => {
-      // Only handle point annotations for now
-      if (annotation.type !== 'point') return;
-      
-      const geometry = annotation.geometry as [number, number, number];
-      const position = new THREE.Vector3(geometry[0], geometry[1], geometry[2]);
-      
       let marker = this.markers.get(annotation.id);
       const isSelected = this.selectedIds.has(annotation.id);
       
-      if (marker) {
-        // Update existing marker
-        marker.position.copy(position);
+      if (marker && marker.userData.annotationType === annotation.type) {
+        this.updateMarkerGeometry(marker, annotation);
         this.updateMarkerAppearance(marker, isSelected);
       } else {
-        // Create new marker
-        marker = this.createMarker(position, isSelected);
+        if (marker) {
+          this.removeMarker(annotation.id);
+        }
+        marker = this.createMarker(annotation, isSelected);
         this.markers.set(annotation.id, marker);
         this.scene.add(marker);
       }
@@ -179,6 +189,9 @@ export class AnnotationManager {
     const pixelSize = this.config.markerSize;
     
     for (const marker of this.markers.values()) {
+      if (marker.userData.annotationType !== 'point') {
+        continue;
+      }
       let scale: number;
       
       if (camera instanceof THREE.PerspectiveCamera) {
@@ -194,7 +207,14 @@ export class AnnotationManager {
         // Fallback for unknown camera types
         scale = 0.01;
       }
-      
+
+      if (marker instanceof THREE.Sprite) {
+        const visibleDiameter = (POINT_TEXTURE_RADIUS * 2) + this.config.pointStrokeWidth;
+        const spriteScaleMultiplier = (2 * POINT_TEXTURE_SIZE) / visibleDiameter;
+        scale *= spriteScaleMultiplier;
+        this.applyPointVisualOffset(marker, camera, scale);
+      }
+
       marker.scale.set(scale, scale, scale);
     }
   }
@@ -202,23 +222,27 @@ export class AnnotationManager {
   /**
    * Get the marker mesh for an annotation (for raycasting)
    */
-  getMarker(id: string): THREE.Mesh | undefined {
+  getMarker(id: string): THREE.Object3D | undefined {
     return this.markers.get(id);
   }
 
   /**
    * Get all marker meshes (for raycasting)
    */
-  getAllMarkers(): THREE.Mesh[] {
+  getAllMarkers(): THREE.Object3D[] {
     return Array.from(this.markers.values());
   }
 
   /**
    * Find annotation ID from a marker mesh
    */
-  getAnnotationIdFromMarker(marker: THREE.Mesh): string | null {
-    for (const [id, mesh] of this.markers.entries()) {
-      if (mesh === marker) return id;
+  getAnnotationIdFromMarker(marker: THREE.Object3D): string | null {
+    let current: THREE.Object3D | null = marker;
+    while (current) {
+      if (typeof current.userData.annotationId === 'string') {
+        return current.userData.annotationId;
+      }
+      current = current.parent;
     }
     return null;
   }
@@ -234,6 +258,32 @@ export class AnnotationManager {
       const index = this.selectionCallbacks.indexOf(callback);
       if (index > -1) {
         this.selectionCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Register a callback for annotation edit start.
+   */
+  onAnnotationEditStart(callback: AnnotationEditCallback): () => void {
+    this.editStartCallbacks.push(callback);
+    return () => {
+      const index = this.editStartCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.editStartCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Register a callback for completed annotation geometry updates.
+   */
+  onAnnotationUpdated(callback: AnnotationEditCallback): () => void {
+    this.updateCallbacks.push(callback);
+    return () => {
+      const index = this.updateCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.updateCallbacks.splice(index, 1);
       }
     };
   }
@@ -301,6 +351,9 @@ export class AnnotationManager {
     // Clear callbacks
     this.selectionCallbacks = [];
     this.pickCallback = null;
+    this.editStartCallbacks = [];
+    this.updateCallbacks = [];
+    this.activePointEditId = null;
     
     console.log('🗑️ AnnotationManager: Disposed');
   }
@@ -308,31 +361,194 @@ export class AnnotationManager {
   // ==================== Private Methods ====================
 
   /**
-   * Create a new marker mesh
+   * Returns true when a selected point annotation can enter drag editing.
    */
-  private createMarker(position: THREE.Vector3, isSelected: boolean): THREE.Mesh {
-    const geometry = new THREE.SphereGeometry(1.0, this.config.sphereSegments, this.config.sphereSegments);
-    const material = new THREE.MeshBasicMaterial({
-      color: isSelected ? this.config.selectedColor : this.config.color,
+  canEditPointFromMarker(marker: THREE.Object3D): boolean {
+    const annotationId = this.getAnnotationIdFromMarker(marker);
+    if (!annotationId) {
+      return false;
+    }
+    const annotation = this.annotations.get(annotationId);
+    return Boolean(annotation && annotation.type === 'point' && this.selectedIds.has(annotationId));
+  }
+
+  /**
+   * Start a point-drag editing session from a marker object.
+   */
+  beginPointEditFromMarker(marker: THREE.Object3D): boolean {
+    const annotationId = this.getAnnotationIdFromMarker(marker);
+    if (!annotationId) {
+      return false;
+    }
+    const annotation = this.annotations.get(annotationId);
+    if (!annotation || annotation.type !== 'point' || !this.selectedIds.has(annotationId)) {
+      return false;
+    }
+    this.activePointEditId = annotationId;
+    this.notifyAnnotationEditStart(annotation);
+    return true;
+  }
+
+  /**
+   * Move the point under edit.
+   */
+  moveActivePoint(point: [number, number, number]): void {
+    if (!this.activePointEditId) {
+      return;
+    }
+    const annotation = this.annotations.get(this.activePointEditId);
+    if (!annotation || annotation.type !== 'point') {
+      return;
+    }
+    annotation.geometry = [...point] as [number, number, number];
+    const marker = this.markers.get(this.activePointEditId);
+    if (marker) {
+      this.updateMarkerGeometry(marker, annotation);
+    }
+  }
+
+  /**
+   * Finalise the current point edit session and emit update.
+   */
+  endPointEdit(): void {
+    if (!this.activePointEditId) {
+      return;
+    }
+    const annotation = this.annotations.get(this.activePointEditId);
+    this.activePointEditId = null;
+    if (!annotation) {
+      return;
+    }
+    this.notifyAnnotationUpdated(annotation);
+  }
+
+  /**
+   * Create a new renderable annotation object.
+   */
+  private createMarker(annotation: Annotation, isSelected: boolean): THREE.Object3D {
+    switch (annotation.type) {
+      case 'line':
+        return this.createLineMarker(annotation, isSelected, false);
+      case 'area':
+        return this.createLineMarker(annotation, isSelected, true);
+      case 'point':
+      default:
+        return this.createPointMarker(annotation, isSelected);
+    }
+  }
+
+  /**
+   * Create a new point marker mesh.
+   */
+  private createPointMarker(annotation: Annotation, isSelected: boolean): THREE.Sprite {
+    const texture = this.createPointTexture(isSelected);
+    const material = new THREE.SpriteMaterial({
+      map: texture,
       transparent: true,
-      opacity: isSelected ? this.config.selectedOpacity : this.config.opacity,
       depthTest: true,
-      depthWrite: true
+      depthWrite: false,
     });
-    
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(position);
-    
+
+    const mesh = new THREE.Sprite(material);
+    const point = annotation.geometry as [number, number, number];
+    mesh.userData.annotationAnchor = new THREE.Vector3(point[0], point[1], point[2]);
+    mesh.position.copy(mesh.userData.annotationAnchor);
+    mesh.userData.annotationId = annotation.id;
+    mesh.userData.annotationType = annotation.type;
+    mesh.renderOrder = 10;
+
     return mesh;
   }
 
   /**
-   * Update a marker's appearance based on selection state
+   * Create a line or polygon-outline marker.
    */
-  private updateMarkerAppearance(marker: THREE.Mesh, isSelected: boolean): void {
-    const material = marker.material as THREE.MeshBasicMaterial;
-    material.color.setHex(isSelected ? this.config.selectedColor : this.config.color);
-    material.opacity = isSelected ? this.config.selectedOpacity : this.config.opacity;
+  private createLineMarker(
+    annotation: Annotation,
+    isSelected: boolean,
+    closed: boolean
+  ): THREE.Line {
+    const vertices = this.toVertexVectors(annotation.geometry);
+    const points = closed && vertices.length > 2
+      ? [...vertices, vertices[0].clone()]
+      : vertices;
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+      color: isSelected ? this.config.selectedColor : this.config.color,
+      transparent: true,
+      opacity: isSelected ? this.config.selectedOpacity : this.config.opacity,
+      depthTest: true,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.userData.annotationId = annotation.id;
+    line.userData.annotationType = annotation.type;
+    return line;
+  }
+
+  /**
+   * Update a marker's geometry without recreating it.
+   */
+  private updateMarkerGeometry(marker: THREE.Object3D, annotation: Annotation): void {
+    if (annotation.type === 'point') {
+      const point = annotation.geometry as [number, number, number];
+      if (marker instanceof THREE.Sprite) {
+        marker.userData.annotationAnchor = new THREE.Vector3(point[0], point[1], point[2]);
+        marker.position.copy(marker.userData.annotationAnchor);
+      } else {
+        marker.position.set(point[0], point[1], point[2]);
+      }
+      return;
+    }
+
+    const line = marker as THREE.Line;
+    const oldGeometry = line.geometry;
+    const vertices = this.toVertexVectors(annotation.geometry);
+    const points = annotation.type === 'area' && vertices.length > 2
+      ? [...vertices, vertices[0].clone()]
+      : vertices;
+    line.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    oldGeometry.dispose();
+  }
+
+  /**
+   * Update a marker's appearance based on selection state.
+   */
+  private updateMarkerAppearance(marker: THREE.Object3D, isSelected: boolean): void {
+    if (marker instanceof THREE.Sprite) {
+      const material = marker.material;
+      material.map?.dispose();
+      material.map = this.createPointTexture(isSelected);
+      material.needsUpdate = true;
+      return;
+    }
+
+    const color = isSelected ? this.config.selectedColor : this.config.color;
+    const opacity = isSelected ? this.config.selectedOpacity : this.config.opacity;
+    marker.traverse((child) => {
+      const material = (child as THREE.Mesh | THREE.Line).material;
+      if (!material) {
+        return;
+      }
+      if (Array.isArray(material)) {
+        material.forEach((entry) => this.applyMaterialAppearance(entry, color, opacity));
+      } else {
+        this.applyMaterialAppearance(material, color, opacity);
+      }
+    });
+  }
+
+  private applyMaterialAppearance(material: THREE.Material, color: number, opacity: number): void {
+    const maybeColor = material as THREE.Material & { color?: THREE.Color; opacity?: number; transparent?: boolean };
+    if (maybeColor.color) {
+      maybeColor.color.setHex(color);
+    }
+    if (typeof maybeColor.opacity === 'number') {
+      maybeColor.opacity = opacity;
+    }
+    if ('transparent' in maybeColor) {
+      maybeColor.transparent = opacity < 1;
+    }
   }
 
   /**
@@ -352,10 +568,124 @@ export class AnnotationManager {
     const marker = this.markers.get(id);
     if (marker) {
       this.scene.remove(marker);
-      marker.geometry.dispose();
-      (marker.material as THREE.Material).dispose();
+      if (marker instanceof THREE.Sprite) {
+        marker.material.map?.dispose();
+        marker.material.dispose();
+      }
+      marker.traverse((child) => {
+        const geometry = (child as THREE.Mesh | THREE.Line).geometry;
+        if (geometry) {
+          geometry.dispose();
+        }
+        const material = (child as THREE.Mesh | THREE.Line).material;
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose());
+        } else {
+          material?.dispose();
+        }
+      });
       this.markers.delete(id);
+      this.annotations.delete(id);
     }
+  }
+
+  private createPointTexture(isSelected: boolean): THREE.CanvasTexture {
+    const size = POINT_TEXTURE_SIZE;
+    const center = size / 2;
+    const radius = POINT_TEXTURE_RADIUS;
+    const strokeWidth = this.config.pointStrokeWidth;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to create annotation point texture context');
+    }
+
+    context.clearRect(0, 0, size, size);
+    context.shadowColor = `rgba(0,0,0,${this.config.pointShadowOpacity})`;
+    context.shadowBlur = 10;
+    context.shadowOffsetX = 1.5;
+    context.shadowOffsetY = 1.5;
+    context.beginPath();
+    context.arc(center, center, radius, 0, Math.PI * 2);
+    context.fillStyle = this.toCanvasColor(
+      isSelected ? this.config.selectedPointFillColor : this.config.pointFillColor,
+      isSelected ? 0.5 : 0.3,
+    );
+    context.fill();
+    context.shadowColor = 'transparent';
+    context.lineWidth = strokeWidth;
+    context.strokeStyle = this.toCanvasColor(
+      isSelected ? this.config.selectedPointStrokeColor : this.config.pointStrokeColor,
+      1,
+    );
+    context.stroke();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private toCanvasColor(hex: number, alpha: number): string {
+    const color = new THREE.Color(hex);
+    return `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${alpha})`;
+  }
+
+  private cloneAnnotation(annotation: Annotation): Annotation {
+    return {
+      ...annotation,
+      geometry: Array.isArray(annotation.geometry[0])
+        ? (annotation.geometry as [number, number, number][]).map((point) => [...point] as [number, number, number])
+        : ([...(annotation.geometry as [number, number, number])] as [number, number, number]),
+      normal: annotation.normal ? [...annotation.normal] as [number, number, number] : undefined,
+    };
+  }
+
+  private applyPointVisualOffset(
+    marker: THREE.Sprite,
+    camera: THREE.Camera,
+    scale: number,
+  ): void {
+    const anchor = marker.userData.annotationAnchor as THREE.Vector3 | undefined;
+    if (!anchor) {
+      return;
+    }
+
+    const offsetDistance = scale * 0.18;
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const directionToCamera = camera.position.clone().sub(anchor);
+      if (directionToCamera.lengthSq() === 0) {
+        marker.position.copy(anchor);
+        return;
+      }
+      directionToCamera.normalize().multiplyScalar(offsetDistance);
+      marker.position.copy(anchor).add(directionToCamera);
+      return;
+    }
+
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    marker.position.copy(anchor).add(forward.multiplyScalar(-offsetDistance));
+  }
+
+  private toVertexVectors(geometry: Annotation['geometry']): THREE.Vector3[] {
+    if (!Array.isArray(geometry) || geometry.length === 0) {
+      return [];
+    }
+
+    if (
+      geometry.length === 3 &&
+      typeof geometry[0] === 'number' &&
+      typeof geometry[1] === 'number' &&
+      typeof geometry[2] === 'number'
+    ) {
+      const point = geometry as [number, number, number];
+      return [new THREE.Vector3(point[0], point[1], point[2])];
+    }
+
+    return (geometry as [number, number, number][])
+      .map((point) => new THREE.Vector3(point[0], point[1], point[2]));
   }
 
   /**
@@ -368,6 +698,28 @@ export class AnnotationManager {
         callback(selectedIds);
       } catch (error) {
         console.error('Error in selection change callback:', error);
+      }
+    });
+  }
+
+  private notifyAnnotationEditStart(annotation: Annotation): void {
+    const payload = this.cloneAnnotation(annotation);
+    this.editStartCallbacks.forEach((callback) => {
+      try {
+        callback(payload);
+      } catch (error) {
+        console.error('Error in annotation edit start callback:', error);
+      }
+    });
+  }
+
+  private notifyAnnotationUpdated(annotation: Annotation): void {
+    const payload = this.cloneAnnotation(annotation);
+    this.updateCallbacks.forEach((callback) => {
+      try {
+        callback(payload);
+      } catch (error) {
+        console.error('Error in annotation updated callback:', error);
       }
     });
   }

@@ -14,12 +14,18 @@ export interface InputControllerConfig {
   getAnnotations: () => THREE.Object3D[]; // Returns markers
   /** Called when user double-clicks on a 3D model */
   onModelDoubleClick: (point: THREE.Vector3) => void;
-  /** Called when user single-clicks on a 3D model (used by modal tools like measurement) */
+  /** Called when user single-clicks on a 3D model (used by modal tools like picking/measurement) */
   onModelClick?: (point: THREE.Vector3) => void;
   /** Called when user clicks on an annotation marker */
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
   /** Called when user clicks on empty space (background) */
   onBackgroundClick: (isMultiSelect: boolean) => void;
+  /** Called when a selected point annotation enters drag edit mode */
+  onAnnotationDragStart?: (object: THREE.Object3D) => boolean;
+  /** Called while a point annotation is dragged across the model surface */
+  onAnnotationDragMove?: (point: THREE.Vector3) => void;
+  /** Called when a point annotation drag session ends */
+  onAnnotationDragEnd?: () => void;
 }
 
 /**
@@ -59,11 +65,17 @@ export class InputController {
   private isPickingMode = false;
   private isMeasurementMode = false;
   private enabled = true;
+  private pointerDownCandidate: { object: THREE.Object3D; clientX: number; clientY: number; pointerId: number } | null = null;
+  private activeDragPointerId: number | null = null;
+  private suppressNextClick = false;
 
   constructor(private config: InputControllerConfig) {
     this.handleResize = this.handleResize.bind(this);
     this.handleDoubleClick = this.handleDoubleClick.bind(this);
     this.handleClick = this.handleClick.bind(this);
+    this.handlePointerDown = this.handlePointerDown.bind(this);
+    this.handlePointerMove = this.handlePointerMove.bind(this);
+    this.handlePointerUp = this.handlePointerUp.bind(this);
 
     this.attachListeners();
   }
@@ -72,12 +84,20 @@ export class InputController {
     window.addEventListener('resize', this.handleResize);
     this.config.domElement.addEventListener('dblclick', this.handleDoubleClick);
     this.config.domElement.addEventListener('click', this.handleClick);
+    this.config.domElement.addEventListener('pointerdown', this.handlePointerDown);
+    this.config.domElement.addEventListener('pointermove', this.handlePointerMove);
+    this.config.domElement.addEventListener('pointerup', this.handlePointerUp);
+    this.config.domElement.addEventListener('pointercancel', this.handlePointerUp);
   }
 
   dispose() {
     window.removeEventListener('resize', this.handleResize);
     this.config.domElement.removeEventListener('dblclick', this.handleDoubleClick);
     this.config.domElement.removeEventListener('click', this.handleClick);
+    this.config.domElement.removeEventListener('pointerdown', this.handlePointerDown);
+    this.config.domElement.removeEventListener('pointermove', this.handlePointerMove);
+    this.config.domElement.removeEventListener('pointerup', this.handlePointerUp);
+    this.config.domElement.removeEventListener('pointercancel', this.handlePointerUp);
   }
 
   setPickingMode(enabled: boolean) {
@@ -131,6 +151,12 @@ export class InputController {
     return intersects.length > 0 ? intersects[0].point : null;
   }
 
+  private getAnnotationIntersectionObject(): THREE.Object3D | null {
+    const markers = this.config.getAnnotations();
+    const intersects = this.raycaster.intersectObjects(markers, false);
+    return intersects.length > 0 ? intersects[0].object : null;
+  }
+
   handleResize() {
     // Input controller currently doesn't need to do much on resize 
     // as it calculates mouse position relative to rect on every event.
@@ -138,7 +164,7 @@ export class InputController {
 
   handleDoubleClick(event: MouseEvent) {
     if (!this.enabled) return;
-    if (this.isMeasurementMode) return; // measurement uses single click picks
+    if (this.isMeasurementMode || this.isPickingMode) return;
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
@@ -150,6 +176,10 @@ export class InputController {
 
   handleClick(event: MouseEvent) {
     if (!this.enabled) return;
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
@@ -161,8 +191,13 @@ export class InputController {
       return;
     }
 
-    // Annotation picking mode uses double-click on model points only
-    if (this.isPickingMode) return;
+    if (this.isPickingMode) {
+      const point = this.getModelIntersectionPoint();
+      if (point) {
+        this.config.onModelClick?.(point);
+      }
+      return;
+    }
 
     // Check Annotations
     const markers = this.config.getAnnotations();
@@ -174,6 +209,98 @@ export class InputController {
       this.config.onAnnotationClick(intersects[0].object, isMulti);
     } else {
       this.config.onBackgroundClick(isMulti);
+    }
+  }
+
+  private handlePointerDown(event: PointerEvent) {
+    if (!this.enabled || this.isPickingMode || this.isMeasurementMode) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+      return;
+    }
+
+    this.updateMouseCoordinates(event);
+    this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    const hitObject = this.getAnnotationIntersectionObject();
+    if (!hitObject) {
+      return;
+    }
+
+    this.pointerDownCandidate = {
+      object: hitObject,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+    };
+  }
+
+  private handlePointerMove(event: PointerEvent) {
+    if (!this.enabled) return;
+
+    if (this.activeDragPointerId !== null) {
+      if (event.pointerId !== this.activeDragPointerId) {
+        return;
+      }
+      this.updateMouseCoordinates(event);
+      this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+      const point = this.getModelIntersectionPoint();
+      if (point) {
+        this.config.onAnnotationDragMove?.(point);
+      }
+      event.preventDefault();
+      return;
+    }
+
+    if (!this.pointerDownCandidate || event.pointerId !== this.pointerDownCandidate.pointerId) {
+      return;
+    }
+
+    const dx = event.clientX - this.pointerDownCandidate.clientX;
+    const dy = event.clientY - this.pointerDownCandidate.clientY;
+    if ((dx * dx + dy * dy) < 9) {
+      return;
+    }
+
+    const started = this.config.onAnnotationDragStart?.(this.pointerDownCandidate.object) ?? false;
+    if (!started) {
+      this.pointerDownCandidate = null;
+      return;
+    }
+
+    this.activeDragPointerId = event.pointerId;
+    this.config.domElement.setPointerCapture(event.pointerId);
+    this.pointerDownCandidate = null;
+    this.suppressNextClick = true;
+
+    this.updateMouseCoordinates(event);
+    this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    const point = this.getModelIntersectionPoint();
+    if (point) {
+      this.config.onAnnotationDragMove?.(point);
+    }
+    event.preventDefault();
+  }
+
+  private handlePointerUp(event: PointerEvent) {
+    if (this.activeDragPointerId !== null && event.pointerId === this.activeDragPointerId) {
+      this.updateMouseCoordinates(event);
+      this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+      const point = this.getModelIntersectionPoint();
+      if (point) {
+        this.config.onAnnotationDragMove?.(point);
+      }
+      this.config.onAnnotationDragEnd?.();
+      if (this.config.domElement.hasPointerCapture(event.pointerId)) {
+        this.config.domElement.releasePointerCapture(event.pointerId);
+      }
+      this.activeDragPointerId = null;
+      this.pointerDownCandidate = null;
+      this.suppressNextClick = true;
+      event.preventDefault();
+      return;
+    }
+
+    if (this.pointerDownCandidate && event.pointerId === this.pointerDownCandidate.pointerId) {
+      this.pointerDownCandidate = null;
     }
   }
 }
