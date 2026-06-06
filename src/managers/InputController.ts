@@ -20,6 +20,10 @@ export interface InputControllerConfig {
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
   /** Called when user clicks on empty space (background) */
   onBackgroundClick: (isMultiSelect: boolean) => void;
+  /** Returns true when the pointer-down target can start annotation dragging */
+  canStartAnnotationDrag?: (object: THREE.Object3D) => boolean;
+  /** Notifies when annotation drag should lock or unlock camera controls */
+  onAnnotationDragLockChange?: (locked: boolean) => void;
   /** Called when a selected point annotation enters drag edit mode */
   onAnnotationDragStart?: (object: THREE.Object3D) => boolean;
   /** Called while a point annotation is dragged across the model surface */
@@ -68,6 +72,7 @@ export class InputController {
   private pointerDownCandidate: { object: THREE.Object3D; clientX: number; clientY: number; pointerId: number } | null = null;
   private activeDragPointerId: number | null = null;
   private suppressNextClick = false;
+  private hoverCursor: string | null = null;
 
   constructor(private config: InputControllerConfig) {
     this.handleResize = this.handleResize.bind(this);
@@ -76,6 +81,7 @@ export class InputController {
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
+    this.handlePointerLeave = this.handlePointerLeave.bind(this);
 
     this.attachListeners();
   }
@@ -88,6 +94,7 @@ export class InputController {
     this.config.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.config.domElement.addEventListener('pointerup', this.handlePointerUp);
     this.config.domElement.addEventListener('pointercancel', this.handlePointerUp);
+    this.config.domElement.addEventListener('pointerleave', this.handlePointerLeave);
   }
 
   dispose() {
@@ -98,6 +105,7 @@ export class InputController {
     this.config.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.config.domElement.removeEventListener('pointerup', this.handlePointerUp);
     this.config.domElement.removeEventListener('pointercancel', this.handlePointerUp);
+    this.config.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
   }
 
   setPickingMode(enabled: boolean) {
@@ -132,7 +140,15 @@ export class InputController {
   }
 
   private updateCursor() {
-    this.config.domElement.style.cursor = (this.isPickingMode || this.isMeasurementMode) ? 'crosshair' : 'auto';
+    if (this.isPickingMode || this.isMeasurementMode) {
+      this.config.domElement.style.cursor = 'crosshair';
+      return;
+    }
+    if (this.activeDragPointerId !== null) {
+      this.config.domElement.style.cursor = 'grabbing';
+      return;
+    }
+    this.config.domElement.style.cursor = this.hoverCursor ?? 'auto';
   }
 
   private getModelIntersectionPoint(): THREE.Vector3 | null {
@@ -155,6 +171,27 @@ export class InputController {
     const markers = this.config.getAnnotations();
     const intersects = this.raycaster.intersectObjects(markers, false);
     return intersects.length > 0 ? intersects[0].object : null;
+  }
+
+  private updateHoverCursorFromEvent(event: MouseEvent | PointerEvent) {
+    if (this.isPickingMode || this.isMeasurementMode || this.activeDragPointerId !== null) {
+      this.updateCursor();
+      return;
+    }
+
+    this.updateMouseCoordinates(event);
+    this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    const hitObject = this.getAnnotationIntersectionObject();
+    if (!hitObject) {
+      this.hoverCursor = null;
+      this.updateCursor();
+      return;
+    }
+
+    this.hoverCursor = (this.config.canStartAnnotationDrag?.(hitObject) ?? false)
+      ? 'grab'
+      : 'pointer';
+    this.updateCursor();
   }
 
   handleResize() {
@@ -224,6 +261,9 @@ export class InputController {
     if (!hitObject) {
       return;
     }
+    if (!(this.config.canStartAnnotationDrag?.(hitObject) ?? false)) {
+      return;
+    }
 
     this.pointerDownCandidate = {
       object: hitObject,
@@ -231,6 +271,7 @@ export class InputController {
       clientY: event.clientY,
       pointerId: event.pointerId,
     };
+    this.config.onAnnotationDragLockChange?.(true);
   }
 
   private handlePointerMove(event: PointerEvent) {
@@ -246,11 +287,14 @@ export class InputController {
       if (point) {
         this.config.onAnnotationDragMove?.(point);
       }
+      this.hoverCursor = 'grabbing';
+      this.updateCursor();
       event.preventDefault();
       return;
     }
 
     if (!this.pointerDownCandidate || event.pointerId !== this.pointerDownCandidate.pointerId) {
+      this.updateHoverCursorFromEvent(event);
       return;
     }
 
@@ -263,6 +307,7 @@ export class InputController {
     const started = this.config.onAnnotationDragStart?.(this.pointerDownCandidate.object) ?? false;
     if (!started) {
       this.pointerDownCandidate = null;
+      this.config.onAnnotationDragLockChange?.(false);
       return;
     }
 
@@ -270,6 +315,8 @@ export class InputController {
     this.config.domElement.setPointerCapture(event.pointerId);
     this.pointerDownCandidate = null;
     this.suppressNextClick = true;
+    this.hoverCursor = 'grabbing';
+    this.updateCursor();
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
@@ -295,12 +342,24 @@ export class InputController {
       this.activeDragPointerId = null;
       this.pointerDownCandidate = null;
       this.suppressNextClick = true;
+      this.config.onAnnotationDragLockChange?.(false);
+      this.updateHoverCursorFromEvent(event);
       event.preventDefault();
       return;
     }
 
     if (this.pointerDownCandidate && event.pointerId === this.pointerDownCandidate.pointerId) {
       this.pointerDownCandidate = null;
+      this.config.onAnnotationDragLockChange?.(false);
+      this.updateHoverCursorFromEvent(event);
     }
+  }
+
+  private handlePointerLeave() {
+    if (this.isPickingMode || this.isMeasurementMode || this.activeDragPointerId !== null) {
+      return;
+    }
+    this.hoverCursor = null;
+    this.updateCursor();
   }
 }

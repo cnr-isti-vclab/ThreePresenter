@@ -274,6 +274,12 @@ export class ThreePresenter {
       onBackgroundClick: (isMulti) => {
         if (!isMulti) this.annotationManager.clearSelection();
       },
+      canStartAnnotationDrag: (object) => this.annotationManager.canEditPointFromMarker(object),
+      onAnnotationDragLockChange: (locked) => {
+        if (this.controls) {
+          this.controls.enabled = !locked;
+        }
+      },
       onAnnotationDragStart: (object) => this.annotationManager.beginPointEditFromMarker(object),
       onAnnotationDragMove: (point) => {
         this.annotationManager.moveActivePoint([point.x, point.y, point.z]);
