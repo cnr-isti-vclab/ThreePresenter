@@ -39,6 +39,10 @@ ui.setButtonVisible('home', true);
 ui.setButtonVisible('screenshot', true);
 ```
 
+**Starter skin asset:**
+
+- `docs/skin/threepresenter-skin.svg` is a sample external SVG skin for `DefaultUI`, aligned with the OpenLIME visual language used in OCRA.
+
 ## Development
 
 Once you have cloned the repository, install dependencies and start the development server with:  

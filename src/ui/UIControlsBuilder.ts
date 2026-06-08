@@ -1,3 +1,5 @@
+import { ThreePresenterSkin } from './ThreePresenterSkin';
+
 /**
  * UIControlsBuilder - Builder pattern for creating 3D viewer UI controls
  * 
@@ -21,6 +23,8 @@ export interface ButtonConfig {
   id: string;
   /** Bootstrap icon class (e.g., 'bi-house', 'bi-camera') */
   icon: string;
+  /** External skin selector used to replace the Bootstrap icon */
+  skinSelector?: string;
   /** Custom HTML content (overrides icon if provided) */
   customHTML?: string;
   /** Tooltip text on hover */
@@ -205,12 +209,7 @@ export class UIControlsBuilder {
   private createButton(config: ButtonConfig): HTMLButtonElement {
     const button = document.createElement('button');
     
-    // Set content - custom HTML or icon
-    if (config.customHTML) {
-      button.innerHTML = config.customHTML;
-    } else {
-      button.innerHTML = `<i class="bi ${config.icon}"></i>`;
-    }
+    this.setButtonContent(button, config);
     
     // Base button classes - Bootstrap styling
     // Note: We don't include 'd-flex' here because it uses !important and conflicts with display: none
@@ -252,6 +251,24 @@ export class UIControlsBuilder {
     button.addEventListener('click', config.onClick);
     
     return button;
+  }
+
+  private setButtonContent(button: HTMLButtonElement, config: ButtonConfig): void {
+    if (config.customHTML) {
+      button.innerHTML = config.customHTML;
+      return;
+    }
+
+    button.innerHTML = `<i class="bi ${config.icon}"></i>`;
+
+    if (!config.skinSelector) {
+      return;
+    }
+
+    button.dataset.tpSkinSelector = config.skinSelector;
+    void ThreePresenterSkin.applyIcon(button, config.skinSelector).catch((error) => {
+      console.warn(`UIControlsBuilder: failed to apply skin icon '${config.skinSelector}'`, error);
+    });
   }
   
   /**

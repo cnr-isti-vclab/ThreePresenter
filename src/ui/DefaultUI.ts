@@ -1,8 +1,11 @@
 import { ThreePresenter } from '../ThreePresenter';
+import { ThreePresenterSkin } from './ThreePresenterSkin';
 import { UIControlsBuilder, type ButtonConfig, type ContainerConfig } from './UIControlsBuilder';
 
 export interface DefaultUIConfig {
     container?: Partial<ContainerConfig>;
+    useSkinIcons?: boolean;
+    skinUrl?: string;
 }
 
 /**
@@ -52,6 +55,7 @@ export class DefaultUI {
     container: HTMLDivElement;
     fullscreenContainer: HTMLDivElement;
     buttons: Map<string, HTMLButtonElement>;
+    private readonly useSkinIcons: boolean;
     private envLightingEnabled: boolean = true;
     private lightPresetIndex: number = -1;
     private readonly lightPositionPresets: Array<{ theta: number; phi: number; label: string }> = [
@@ -63,10 +67,17 @@ export class DefaultUI {
     private readonly onFullscreenChange = () => this.updateFullscreenButton();
 
     constructor(private presenter: ThreePresenter, config: DefaultUIConfig = {}) {
+        this.useSkinIcons = config.useSkinIcons ?? true;
+
+        if (config.skinUrl) {
+            ThreePresenterSkin.setUrl(config.skinUrl);
+        }
+
         const buttonConfigs: ButtonConfig[] = [
             {
                 id: 'home',
                 icon: 'bi-house',
+                skinSelector: this.useSkinIcons ? '.tp-home' : undefined,
                 title: 'Reset camera view',
                 onClick: () => presenter.resetCamera(),
                 visible: false
@@ -74,6 +85,7 @@ export class DefaultUI {
             {
                 id: 'light',
                 icon: 'bi-lightbulb-fill', // Initial state assumes light ON
+                skinSelector: this.useSkinIcons ? '.tp-light-on' : undefined,
                 title: 'Toggle lighting',
                 onClick: () => {
                     presenter.toggleLight();
@@ -84,12 +96,7 @@ export class DefaultUI {
             {
                 id: 'lightPosition',
                 icon: 'bi-brightness-high',
-                customHTML: `
-          <div style="position: relative; width: 16px; height: 16px;">
-            <i class="bi bi-brightness-high" style="position: absolute; top: -10px; left: -4px; font-size: 24px;"></i>
-            <i class="bi bi-arrows-move" style="position: absolute; font-size: 32px; top: -16px; left: -8px;"></i>
-          </div>
-        `,
+                skinSelector: this.useSkinIcons ? '.tp-light-position' : undefined,
                 title: 'Cycle headlight direction',
                 onClick: () => this.cycleLightPosition(),
                 visible: false
@@ -97,6 +104,7 @@ export class DefaultUI {
             {
                 id: 'env',
                 icon: 'bi-globe',
+                skinSelector: this.useSkinIcons ? '.tp-env-on' : undefined,
                 title: 'Toggle environment lighting',
                 onClick: () => {
                     presenter.toggleEnvLighting();
@@ -107,6 +115,7 @@ export class DefaultUI {
             {
                 id: 'screenshot',
                 icon: 'bi-camera',
+                skinSelector: this.useSkinIcons ? '.tp-screenshot' : undefined,
                 title: 'Take screenshot',
                 onClick: () => presenter.takeScreenshot(),
                 visible: false
@@ -114,6 +123,7 @@ export class DefaultUI {
             {
                 id: 'camera',
                 icon: 'bi-box',
+                skinSelector: this.useSkinIcons ? '.tp-camera-perspective' : undefined,
                 title: 'Toggle orthographic/perspective',
                 onClick: () => presenter.toggleCameraMode(),
                 visible: false
@@ -121,6 +131,7 @@ export class DefaultUI {
             {
                 id: 'annotation',
                 icon: 'bi-pencil',
+                skinSelector: this.useSkinIcons ? '.tp-annotation' : undefined,
                 title: 'Add annotation',
                 onClick: () => presenter.togglePickingMode(),
                 visible: false
@@ -128,6 +139,7 @@ export class DefaultUI {
             {
                 id: 'measure',
                 icon: 'bi-rulers',
+                skinSelector: this.useSkinIcons ? '.tp-measure' : undefined,
                 title: 'Measure distance',
                 onClick: () => presenter.toggleMeasurementMode(),
                 visible: false
@@ -152,6 +164,7 @@ export class DefaultUI {
         const fullscreenButtonConfig: ButtonConfig[] = [{
             id: 'fullscreen',
             icon: 'bi-fullscreen',
+            skinSelector: this.useSkinIcons ? '.tp-fullscreen-enter' : undefined,
             title: 'Toggle fullscreen',
             onClick: () => this.toggleFullscreen(),
             visible: false
@@ -200,13 +213,12 @@ export class DefaultUI {
     }
 
     private updateFullscreenButton() {
-        const btn = this.buttons.get('fullscreen');
-        if (btn) {
-            const isFullscreen = !!document.fullscreenElement;
-            btn.innerHTML = isFullscreen 
-                ? '<i class="bi bi-fullscreen-exit"></i>' 
-                : '<i class="bi bi-fullscreen"></i>';
-        }
+        const isFullscreen = !!document.fullscreenElement;
+        this.setButtonIcon(
+            'fullscreen',
+            isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen',
+            isFullscreen ? '.tp-fullscreen-exit' : '.tp-fullscreen-enter'
+        );
     }
 
     private cycleLightPosition() {
@@ -261,18 +273,20 @@ export class DefaultUI {
     }
 
     updateLightButton() {
-        const btn = this.buttons.get('light');
-        if (btn) {
-            const enabled = this.presenter.lightEnabled;
-            btn.innerHTML = enabled ? '<i class="bi bi-lightbulb-fill"></i>' : '<i class="bi bi-lightbulb"></i>';
-        }
+        const enabled = this.presenter.lightEnabled;
+        this.setButtonIcon(
+            'light',
+            enabled ? 'bi-lightbulb-fill' : 'bi-lightbulb',
+            enabled ? '.tp-light-on' : '.tp-light-off'
+        );
     }
 
     updateEnvButton() {
-        const btn = this.buttons.get('env');
-        if (btn) {
-            btn.innerHTML = this.envLightingEnabled ? '<i class="bi bi-globe"></i>' : '<i class="bi bi-globe-alt"></i>';
-        }
+        this.setButtonIcon(
+            'env',
+            this.envLightingEnabled ? 'bi-globe' : 'bi-globe-alt',
+            this.envLightingEnabled ? '.tp-env-on' : '.tp-env-off'
+        );
     }
 
     updateAnnotationButton(enabled: boolean) {
@@ -291,6 +305,11 @@ export class DefaultUI {
     updateCameraButton(isOrthographic: boolean) {
         const btn = this.buttons.get('camera');
         if (btn) {
+            this.setButtonIcon(
+                'camera',
+                isOrthographic ? 'bi-bounding-box-circles' : 'bi-box',
+                isOrthographic ? '.tp-camera-orthographic' : '.tp-camera-perspective'
+            );
             btn.style.opacity = isOrthographic ? '0.7' : '1';
         }
     }
@@ -314,6 +333,36 @@ export class DefaultUI {
             btn.style.display = visible ? 'flex' : 'none';
         } else {
             console.warn(`DefaultUI: No button found with id '${id}'`);
+        }
+    }
+
+    private setButtonIcon(id: string, bootstrapIcon: string, skinSelector?: string) {
+        const btn = this.buttons.get(id);
+        if (!btn) {
+            return;
+        }
+
+        btn.innerHTML = `<i class="bi ${bootstrapIcon}"></i>`;
+
+        if (!this.useSkinIcons || !skinSelector) {
+            return;
+        }
+
+        const renderToken = `${id}:${skinSelector}:${Date.now()}:${Math.random()}`;
+        btn.dataset.tpSkinRenderToken = renderToken;
+
+        void this.applySkinIcon(btn, skinSelector, renderToken);
+    }
+
+    private async applySkinIcon(button: HTMLButtonElement, skinSelector: string, renderToken: string) {
+        try {
+            const icon = await ThreePresenterSkin.createIcon(skinSelector);
+            if (button.dataset.tpSkinRenderToken !== renderToken) {
+                return;
+            }
+            button.replaceChildren(icon);
+        } catch (error) {
+            console.warn(`DefaultUI: failed to apply skin icon '${skinSelector}'`, error);
         }
     }
 

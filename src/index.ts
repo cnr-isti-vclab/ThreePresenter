@@ -113,6 +113,7 @@ export type { ScaleIndicatorConfig } from './utils/ScaleIndicator';
 // Export UI controls builder
 export { UIControlsBuilder, createButton, createButtonPanel } from './ui/UIControlsBuilder';
 export { DefaultUI } from './ui/DefaultUI';
+export { ThreePresenterSkin } from './ui/ThreePresenterSkin';
 export type { DefaultUIConfig } from './ui/DefaultUI';
 export type {
   ButtonConfig,
