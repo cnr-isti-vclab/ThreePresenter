@@ -199,6 +199,10 @@ export class DefaultUI {
         // Listen for fullscreen changes (e.g., user presses ESC)
         document.addEventListener('fullscreenchange', this.onFullscreenChange);
         this.updateFullscreenButton();
+
+        // Reflect the initial on/off state of light and environment lighting.
+        this.updateLightButton();
+        this.updateEnvButton();
     }
 
     private toggleFullscreen() {
@@ -273,20 +277,12 @@ export class DefaultUI {
     }
 
     updateLightButton() {
-        const enabled = this.presenter.lightEnabled;
-        this.setButtonIcon(
-            'light',
-            enabled ? 'bi-lightbulb-fill' : 'bi-lightbulb',
-            enabled ? '.tp-light-on' : '.tp-light-off'
-        );
+        // OpenLIME-style: keep one glyph and signal on/off via a state class the skin CSS recolours.
+        this.buttons.get('light')?.classList.toggle('tp-active', this.presenter.lightEnabled);
     }
 
     updateEnvButton() {
-        this.setButtonIcon(
-            'env',
-            this.envLightingEnabled ? 'bi-globe' : 'bi-globe-alt',
-            this.envLightingEnabled ? '.tp-env-on' : '.tp-env-off'
-        );
+        this.buttons.get('env')?.classList.toggle('tp-active', this.envLightingEnabled);
     }
 
     updateAnnotationButton(enabled: boolean) {
