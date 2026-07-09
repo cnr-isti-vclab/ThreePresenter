@@ -7,6 +7,7 @@ export class ThreePresenterSkin {
   private static loadPromise: Promise<void> | null = null;
   private static readonly fallbackViewBox = '0 0 24 24';
   private static readonly iconSize = '1.25rem';
+  private static readonly pad = 5; // matches OpenLIME Skin.pad
 
   static setUrl(url: string): void {
     this.url = url;
@@ -108,8 +109,15 @@ export class ThreePresenterSkin {
       const box = graphicsElement.getBBox();
 
       if (Number.isFinite(box.width) && Number.isFinite(box.height) && box.width > 0 && box.height > 0) {
-        const pad = 1.5;
-        return `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`;
+        // Normalize exactly like OpenLIME's Skin: translate the glyph to the
+        // origin and use an origin-based, padded viewBox.
+        const pad = this.pad;
+        const tlist = graphicsElement.transform.baseVal;
+        if (tlist.numberOfItems === 0) {
+          tlist.appendItem(wrapper.createSVGTransform());
+        }
+        tlist.getItem(0).setTranslate(-box.x, -box.y);
+        return `${-pad} ${-pad} ${box.width + pad * 2} ${box.height + pad * 2}`;
       }
     } catch (error) {
       console.warn('ThreePresenterSkin: could not compute icon bounds, using fallback viewBox', error);
