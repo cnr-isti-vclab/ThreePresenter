@@ -46,9 +46,14 @@ export class ThreePresenterSkin {
     wrapper.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     wrapper.style.display = 'block';
 
-    wrapper.appendChild(element);
+    // Wrap the glyph in a neutral (transform-free) group and measure THAT, so the
+    // glyph's own transform is included in the bounds and the viewBox frames it
+    // correctly (measuring the glyph directly ignores its own transform).
+    const contentGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    contentGroup.appendChild(element);
+    wrapper.appendChild(contentGroup);
 
-    const viewBox = this.computeViewBox(wrapper, element);
+    const viewBox = this.computeViewBox(wrapper, contentGroup);
     wrapper.setAttribute('viewBox', viewBox);
 
     return wrapper;
@@ -92,7 +97,7 @@ export class ThreePresenterSkin {
     return response.text();
   }
 
-  private static computeViewBox(wrapper: SVGSVGElement, element: SVGElement): string {
+  private static computeViewBox(wrapper: SVGSVGElement, contentGroup: SVGGElement): string {
     const temp = document.createElement('div');
     temp.style.position = 'absolute';
     temp.style.left = '-99999px';
@@ -105,19 +110,13 @@ export class ThreePresenterSkin {
     document.body.appendChild(temp);
 
     try {
-      const graphicsElement = element as SVGGraphicsElement;
-      const box = graphicsElement.getBBox();
+      // Measuring the neutral wrapper group includes the glyph's own transform,
+      // giving bounds in the wrapper's coordinate system that the viewBox can frame.
+      const box = contentGroup.getBBox();
 
       if (Number.isFinite(box.width) && Number.isFinite(box.height) && box.width > 0 && box.height > 0) {
-        // Normalize exactly like OpenLIME's Skin: translate the glyph to the
-        // origin and use an origin-based, padded viewBox.
         const pad = this.pad;
-        const tlist = graphicsElement.transform.baseVal;
-        if (tlist.numberOfItems === 0) {
-          tlist.appendItem(wrapper.createSVGTransform());
-        }
-        tlist.getItem(0).setTranslate(-box.x, -box.y);
-        return `${-pad} ${-pad} ${box.width + pad * 2} ${box.height + pad * 2}`;
+        return `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`;
       }
     } catch (error) {
       console.warn('ThreePresenterSkin: could not compute icon bounds, using fallback viewBox', error);

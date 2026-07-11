@@ -33,13 +33,6 @@ export const DEFAULT_UI_SKIN_SVG = `
     <path class="tp-icon" d="M19 11h2" />
   </g>
 
-  <g class="tp-light-off">
-    <path class="tp-icon" d="M9 14.5V13a4 4 0 0 1 6.1-3.4" />
-    <path class="tp-icon" d="M9.5 17h5" />
-    <path class="tp-icon" d="M10.5 20h3" />
-    <path class="tp-icon" d="M5 5l14 14" />
-  </g>
-
   <g class="tp-light-position">
     <circle class="tp-icon" cx="12" cy="12" r="3.5" />
     <path class="tp-icon" d="M12 3v3" />
@@ -57,14 +50,6 @@ export const DEFAULT_UI_SKIN_SVG = `
     <path class="tp-icon" d="M3.5 12h17" />
     <path class="tp-icon" d="M12 3.5a12 12 0 0 1 0 17" />
     <path class="tp-icon" d="M12 3.5a12 12 0 0 0 0 17" />
-  </g>
-
-  <g class="tp-env-off">
-    <circle class="tp-icon" cx="12" cy="12" r="8.5" />
-    <path class="tp-icon" d="M3.5 12h17" />
-    <path class="tp-icon" d="M12 3.5a12 12 0 0 1 0 17" />
-    <path class="tp-icon" d="M12 3.5a12 12 0 0 0 0 17" />
-    <path class="tp-icon" d="M5 5l14 14" />
   </g>
 
   <g class="tp-screenshot">
