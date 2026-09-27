@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Example 11 - Line Annotation Creation</title>
+  <title>Example 11 - Line Annotation Creation and Editing</title>
   <style>
     body { margin: 0; font-family: system-ui; }
     #viewer { width: 100vw; height: 100vh; }
@@ -20,6 +20,7 @@
     }
     button { padding: 6px 10px; cursor: pointer; }
     button.active { background: #198754; color: #fff; border-color: #198754; }
+    label { margin-left: 8px; }
     #status { margin-top: 8px; line-height: 1.4; }
   </style>
 </head>
@@ -27,7 +28,8 @@
   <div id="viewer"></div>
   <div id="ui">
     <button id="line" type="button">Draw line</button>
-    <div id="status">Enable the tool, then click vertices on the model. Double-click or press Enter to finish; Escape cancels.</div>
+    <label><input id="editing" type="checkbox" checked> Edit vertices</label>
+    <div id="status">Draw a line, stop drawing, select it, then drag a white vertex handle to edit it.</div>
   </div>
 
   <script type="importmap">
@@ -48,11 +50,19 @@
     });
     const annotations = [];
     const lineButton = document.getElementById('line');
+    const editingCheckbox = document.getElementById('editing');
     const status = document.getElementById('status');
 
     lineButton.addEventListener('click', () => {
       const active = presenter.getAnnotationCreationMode() === 'line';
       presenter.setAnnotationCreationMode(active ? null : 'line');
+    });
+
+    editingCheckbox.addEventListener('change', () => {
+      presenter.setAnnotationEditingEnabled(editingCheckbox.checked);
+      status.textContent = editingCheckbox.checked
+        ? 'Vertex editing enabled.'
+        : 'Inspection only: annotations remain selectable.';
     });
 
     presenter.onAnnotationCreationModeChange = (mode) => {
@@ -68,8 +78,14 @@
         geometry
       });
       presenter.getAnnotationManager().render(annotations);
-      status.textContent = `Created line with ${geometry.length} vertices. The line tool remains active.`;
+      status.textContent = `Created ${geometry.length} vertices. Stop drawing, select the line, then drag a handle.`;
     };
+
+    presenter.getAnnotationManager().onAnnotationUpdated((updated) => {
+      const index = annotations.findIndex(({ id }) => id === updated.id);
+      if (index !== -1) annotations[index] = updated;
+      status.textContent = 'Line vertex updated.';
+    });
 
     await presenter.loadScene({
       models: [{ id: 'model', file: 'venus.glb' }],

@@ -29,7 +29,7 @@ const examples = [
   { id: '08-obj-textured', title: 'OBJ + MTL + Texture', description: 'Loads an OBJ model with external **MTL** and texture files from the smoke asset set' },
   { id: '09-point-picking', title: 'Point Picking', description: 'Minimal picking workflow: enable picking mode and read picked 3D coordinates via `onPointPicked`' },
   { id: '10-measurements', title: 'Measurements', description: 'Modal two-click measurement tool: draw a segment and label its distance' },
-  { id: '11-line-creation', title: 'Line Annotation Creation', description: 'Sequence annotation tool: click surface vertices, preview the next segment, then finish or cancel the draft' }
+  { id: '11-line-creation', title: 'Line Annotation Creation and Editing', description: 'Create a surface polyline, select it, and drag individual vertices across the model' }
 ];
 
 const examplesJson = examples.map(ex => {

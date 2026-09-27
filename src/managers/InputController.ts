@@ -28,15 +28,20 @@ export interface InputControllerConfig {
   /** Called when user clicks on empty space (background) */
   onBackgroundClick: (isMultiSelect: boolean) => void;
   /** Returns true when the pointer-down target can start annotation dragging */
-  canStartAnnotationDrag?: (object: THREE.Object3D) => boolean;
+  canStartAnnotationDrag?: (object: THREE.Object3D, vertexIndex?: number) => boolean;
   /** Notifies when annotation drag should lock or unlock camera controls */
   onAnnotationDragLockChange?: (locked: boolean) => void;
-  /** Called when a selected point annotation enters drag edit mode */
-  onAnnotationDragStart?: (object: THREE.Object3D) => boolean;
-  /** Called while a point annotation is dragged across the model surface */
+  /** Called when a selected annotation or vertex enters drag edit mode */
+  onAnnotationDragStart?: (object: THREE.Object3D, vertexIndex?: number) => boolean;
+  /** Called while an annotation or vertex is dragged across the model surface */
   onAnnotationDragMove?: (point: THREE.Vector3) => void;
-  /** Called when a point annotation drag session ends */
+  /** Called when an annotation drag session ends */
   onAnnotationDragEnd?: () => void;
+}
+
+interface AnnotationDragTarget {
+  object: THREE.Object3D;
+  vertexIndex?: number;
 }
 
 /**
@@ -76,7 +81,11 @@ export class InputController {
   private annotationCreationMode: AnnotationCreationMode = null;
   private isMeasurementMode = false;
   private enabled = true;
-  private pointerDownCandidate: { object: THREE.Object3D; clientX: number; clientY: number; pointerId: number } | null = null;
+  private pointerDownCandidate: AnnotationDragTarget & {
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+  } | null = null;
   private creationPointer: { pointerId: number; clientX: number; clientY: number; moved: boolean } | null = null;
   private activeDragPointerId: number | null = null;
   private suppressNextClick = false;
@@ -201,6 +210,83 @@ export class InputController {
     return intersects.length > 0 ? intersects[0].object : null;
   }
 
+  private getAnnotationDragTarget(): AnnotationDragTarget | null {
+    const handleTarget = this.getLineHandleAtPointer();
+    if (
+      handleTarget &&
+      (this.config.canStartAnnotationDrag?.(handleTarget.object, handleTarget.vertexIndex) ?? false)
+    ) {
+      return handleTarget;
+    }
+
+    const markers = this.config.getAnnotations();
+    const intersections = this.raycaster.intersectObjects(markers, true);
+    for (const intersection of intersections) {
+      const vertexIndex = Number.isInteger(intersection.object.userData.annotationVertexIndex)
+        ? Number(intersection.object.userData.annotationVertexIndex)
+        : intersection.index;
+      if (this.config.canStartAnnotationDrag?.(intersection.object, vertexIndex) ?? false) {
+        return { object: intersection.object, vertexIndex };
+      }
+    }
+    return null;
+  }
+
+  private getLineHandleAtPointer(): AnnotationDragTarget | null {
+    const camera = this.config.getCamera();
+    const rect = this.config.domElement.getBoundingClientRect();
+    const pointerX = (this.mouse.x + 1) * rect.width / 2;
+    const pointerY = (1 - this.mouse.y) * rect.height / 2;
+    let closestHandle: THREE.Sprite | null = null;
+    let closestDistanceSquared = Infinity;
+
+    for (const marker of this.config.getAnnotations()) {
+      const descendants: THREE.Object3D[] = [];
+      marker.traverse((child) => descendants.push(child));
+      for (const child of descendants) {
+        if (
+          !(child instanceof THREE.Sprite) ||
+          child.userData.annotationRole !== 'line-vertex-handle' ||
+          !this.isObjectVisible(child)
+        ) {
+          continue;
+        }
+
+        const projected = child.getWorldPosition(new THREE.Vector3()).project(camera);
+        if (projected.z < -1 || projected.z > 1) {
+          continue;
+        }
+        const x = (projected.x + 1) * rect.width / 2;
+        const y = (1 - projected.y) * rect.height / 2;
+        const distanceSquared = (x - pointerX) ** 2 + (y - pointerY) ** 2;
+        const hitRadius = Number(child.userData.annotationHitRadius ?? 9);
+        if (distanceSquared <= hitRadius ** 2 && distanceSquared < closestDistanceSquared) {
+          closestHandle = child;
+          closestDistanceSquared = distanceSquared;
+        }
+      }
+    }
+
+    if (!closestHandle) {
+      return null;
+    }
+    return {
+      object: closestHandle,
+      vertexIndex: Number(closestHandle.userData.annotationVertexIndex),
+    };
+  }
+
+  private isObjectVisible(object: THREE.Object3D): boolean {
+    let current: THREE.Object3D | null = object;
+    while (current) {
+      if (!current.visible) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return true;
+  }
+
   private updateHoverCursorFromEvent(event: MouseEvent | PointerEvent) {
     if (this.annotationCreationMode !== null || this.isMeasurementMode || this.activeDragPointerId !== null) {
       this.updateCursor();
@@ -209,6 +295,13 @@ export class InputController {
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    const dragTarget = this.getAnnotationDragTarget();
+    if (dragTarget) {
+      this.hoverCursor = 'grab';
+      this.updateCursor();
+      return;
+    }
+
     const hitObject = this.getAnnotationIntersectionObject();
     if (!hitObject) {
       this.hoverCursor = null;
@@ -216,9 +309,7 @@ export class InputController {
       return;
     }
 
-    this.hoverCursor = (this.config.canStartAnnotationDrag?.(hitObject) ?? false)
-      ? 'grab'
-      : 'pointer';
+    this.hoverCursor = 'pointer';
     this.updateCursor();
   }
 
@@ -311,16 +402,13 @@ export class InputController {
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
-    const hitObject = this.getAnnotationIntersectionObject();
-    if (!hitObject) {
-      return;
-    }
-    if (!(this.config.canStartAnnotationDrag?.(hitObject) ?? false)) {
+    const dragTarget = this.getAnnotationDragTarget();
+    if (!dragTarget) {
       return;
     }
 
     this.pointerDownCandidate = {
-      object: hitObject,
+      ...dragTarget,
       clientX: event.clientX,
       clientY: event.clientY,
       pointerId: event.pointerId,
@@ -375,7 +463,10 @@ export class InputController {
       return;
     }
 
-    const started = this.config.onAnnotationDragStart?.(this.pointerDownCandidate.object) ?? false;
+    const started = this.config.onAnnotationDragStart?.(
+      this.pointerDownCandidate.object,
+      this.pointerDownCandidate.vertexIndex,
+    ) ?? false;
     if (!started) {
       this.pointerDownCandidate = null;
       this.config.onAnnotationDragLockChange?.(false);

@@ -310,18 +310,20 @@ export class ThreePresenter {
           this.annotationManager.cancelLineDraft();
         }
       },
-      canStartAnnotationDrag: (object) => this.annotationManager.canEditPointFromMarker(object),
+      canStartAnnotationDrag: (object, vertexIndex) =>
+        this.annotationManager.canEditAnnotationFromMarker(object, vertexIndex),
       onAnnotationDragLockChange: (locked) => {
         if (this.controls) {
           this.controls.enabled = !locked;
         }
       },
-      onAnnotationDragStart: (object) => this.annotationManager.beginPointEditFromMarker(object),
+      onAnnotationDragStart: (object, vertexIndex) =>
+        this.annotationManager.beginAnnotationEditFromMarker(object, vertexIndex),
       onAnnotationDragMove: (point) => {
-        this.annotationManager.moveActivePoint([point.x, point.y, point.z]);
+        this.annotationManager.moveActiveAnnotation([point.x, point.y, point.z]);
       },
       onAnnotationDragEnd: () => {
-        this.annotationManager.endPointEdit();
+        this.annotationManager.endAnnotationEdit();
       },
     });
 
@@ -452,6 +454,15 @@ export class ThreePresenter {
 
   getAnnotationCreationMode(): AnnotationCreationMode {
     return this.annotationCreationMode;
+  }
+
+  /** Allow geometry dragging while preserving annotation visibility and selection. */
+  setAnnotationEditingEnabled(enabled: boolean): void {
+    this.annotationManager.setEditingEnabled(enabled);
+  }
+
+  getAnnotationEditingEnabled(): boolean {
+    return this.annotationManager.isEditingEnabled();
   }
 
   cancelAnnotationCreation(): void {

@@ -62,6 +62,8 @@ const DEFAULT_CONFIG: Required<AnnotationConfig> = {
 
 const POINT_TEXTURE_SIZE = 128;
 const POINT_TEXTURE_RADIUS = 24;
+const LINE_HANDLE_TEXTURE_SIZE = 64;
+const LINE_HANDLE_TEXTURE_RADIUS = 24;
 type ScreenSpaceLineMaterial = LineMaterial & { linewidth: number };
 
 interface LineDraft {
@@ -72,6 +74,11 @@ interface LineDraft {
   committedLine: Line2;
   previewLine: Line2;
   handles: THREE.Points;
+}
+
+interface ActiveAnnotationEdit {
+  annotationId: string;
+  vertexIndex?: number;
 }
 
 /**
@@ -85,7 +92,8 @@ export class AnnotationManager {
   private markers: Map<string, THREE.Object3D> = new Map();
   private annotations: Map<string, Annotation> = new Map();
   private selectedIds: Set<string> = new Set();
-  private activePointEditId: string | null = null;
+  private editingEnabled = true;
+  private activeEdit: ActiveAnnotationEdit | null = null;
   private lineDraft: LineDraft | null = null;
   
   // Callbacks
@@ -206,36 +214,29 @@ export class AnnotationManager {
    * @param canvasHeight - Height of the canvas in pixels
    */
   updateMarkerScales(camera: THREE.Camera, canvasHeight: number): void {
-    const pixelSize = this.config.markerSize;
-    
     for (const marker of this.markers.values()) {
-      if (marker.userData.annotationType !== 'point') {
-        continue;
-      }
-      let scale: number;
-      
-      if (camera instanceof THREE.PerspectiveCamera) {
-        // Perspective: scale based on distance and FOV
-        const distance = camera.position.distanceTo(marker.position);
-        const fovRadians = camera.fov * Math.PI / 180;
-        scale = distance * Math.tan(fovRadians / 2) * 2 * pixelSize / canvasHeight;
-      } else if (camera instanceof THREE.OrthographicCamera) {
-        // Orthographic: scale based on frustum size (no perspective)
-        const visibleHeight = camera.top - camera.bottom;
-        scale = visibleHeight * pixelSize / canvasHeight;
-      } else {
-        // Fallback for unknown camera types
-        scale = 0.01;
-      }
-
-      if (marker instanceof THREE.Sprite) {
+      if (marker.userData.annotationType === 'point' && marker instanceof THREE.Sprite) {
+        let scale = this.getScreenSpaceScale(marker, camera, canvasHeight, this.config.markerSize);
         const visibleDiameter = (POINT_TEXTURE_RADIUS * 2) + this.config.pointStrokeWidth;
         const spriteScaleMultiplier = (2 * POINT_TEXTURE_SIZE) / visibleDiameter;
         scale *= spriteScaleMultiplier;
         this.applyPointVisualOffset(marker, camera, scale);
+        marker.scale.setScalar(scale);
+        continue;
       }
 
-      marker.scale.set(scale, scale, scale);
+      marker.traverse((child) => {
+        if (!(child instanceof THREE.Sprite) || child.userData.annotationRole !== 'line-vertex-handle') {
+          return;
+        }
+        const scale = this.getScreenSpaceScale(
+          child,
+          camera,
+          canvasHeight,
+          this.config.lineVertexSize,
+        ) * (2 * LINE_HANDLE_TEXTURE_SIZE) / (LINE_HANDLE_TEXTURE_RADIUS * 2 + 8);
+        child.scale.setScalar(scale);
+      });
     }
   }
 
@@ -410,6 +411,22 @@ export class AnnotationManager {
     return { ...this.config };
   }
 
+  /** Enable or disable annotation geometry editing without affecting selection. */
+  setEditingEnabled(enabled: boolean): void {
+    if (this.editingEnabled === enabled) {
+      return;
+    }
+    if (!enabled && this.activeEdit) {
+      this.endAnnotationEdit();
+    }
+    this.editingEnabled = enabled;
+    this.updateAllMarkerAppearances();
+  }
+
+  isEditingEnabled(): boolean {
+    return this.editingEnabled;
+  }
+
   /**
    * Dispose of all resources
    */
@@ -425,7 +442,7 @@ export class AnnotationManager {
     this.pickCallback = null;
     this.editStartCallbacks = [];
     this.updateCallbacks = [];
-    this.activePointEditId = null;
+    this.activeEdit = null;
     
     console.log('🗑️ AnnotationManager: Disposed');
   }
@@ -436,6 +453,9 @@ export class AnnotationManager {
    * Returns true when a selected point annotation can enter drag editing.
    */
   canEditPointFromMarker(marker: THREE.Object3D): boolean {
+    if (!this.editingEnabled) {
+      return false;
+    }
     const annotationId = this.getAnnotationIdFromMarker(marker);
     if (!annotationId) {
       return false;
@@ -444,38 +464,97 @@ export class AnnotationManager {
     return Boolean(annotation && annotation.type === 'point' && this.selectedIds.has(annotationId));
   }
 
+  /** Returns true when the pointer target can start an annotation edit. */
+  canEditAnnotationFromMarker(marker: THREE.Object3D, vertexIndex?: number): boolean {
+    if (!this.editingEnabled) {
+      return false;
+    }
+    const annotationId = this.getAnnotationIdFromMarker(marker);
+    if (!annotationId || !this.selectedIds.has(annotationId)) {
+      return false;
+    }
+    const annotation = this.annotations.get(annotationId);
+    if (annotation?.type === 'point') {
+      return true;
+    }
+    return Boolean(
+      annotation?.type === 'line' &&
+      this.selectedIds.size === 1 &&
+      marker.userData.annotationRole === 'line-vertex-handle' &&
+      Number.isInteger(vertexIndex) &&
+      vertexIndex! >= 0 &&
+      vertexIndex! < (annotation.geometry as [number, number, number][]).length,
+    );
+  }
+
+  /** Start editing a point annotation or one vertex of a selected line. */
+  beginAnnotationEditFromMarker(marker: THREE.Object3D, vertexIndex?: number): boolean {
+    if (!this.canEditAnnotationFromMarker(marker, vertexIndex)) {
+      return false;
+    }
+    const annotationId = this.getAnnotationIdFromMarker(marker)!;
+    const annotation = this.annotations.get(annotationId)!;
+    this.activeEdit = {
+      annotationId,
+      vertexIndex: annotation.type === 'line' ? vertexIndex : undefined,
+    };
+    this.notifyAnnotationEditStart(annotation);
+    return true;
+  }
+
+  /** Move the active point or line vertex to a model-surface position. */
+  moveActiveAnnotation(point: [number, number, number]): void {
+    if (!this.editingEnabled || !this.activeEdit) {
+      return;
+    }
+    const annotation = this.annotations.get(this.activeEdit.annotationId);
+    if (!annotation) {
+      return;
+    }
+
+    if (annotation.type === 'point') {
+      annotation.geometry = [...point] as [number, number, number];
+    } else if (annotation.type === 'line' && this.activeEdit.vertexIndex !== undefined) {
+      const geometry = annotation.geometry as [number, number, number][];
+      geometry[this.activeEdit.vertexIndex] = [...point] as [number, number, number];
+    } else {
+      return;
+    }
+
+    const marker = this.markers.get(this.activeEdit.annotationId);
+    if (marker) {
+      this.updateMarkerGeometry(marker, annotation);
+    }
+  }
+
+  /** Finish the active edit and publish the updated annotation. */
+  endAnnotationEdit(): void {
+    if (!this.activeEdit) {
+      return;
+    }
+    const annotation = this.annotations.get(this.activeEdit.annotationId);
+    this.activeEdit = null;
+    if (annotation) {
+      this.notifyAnnotationUpdated(annotation);
+    }
+  }
+
   /**
    * Start a point-drag editing session from a marker object.
    */
   beginPointEditFromMarker(marker: THREE.Object3D): boolean {
-    const annotationId = this.getAnnotationIdFromMarker(marker);
-    if (!annotationId) {
-      return false;
-    }
-    const annotation = this.annotations.get(annotationId);
-    if (!annotation || annotation.type !== 'point' || !this.selectedIds.has(annotationId)) {
-      return false;
-    }
-    this.activePointEditId = annotationId;
-    this.notifyAnnotationEditStart(annotation);
-    return true;
+    return this.canEditPointFromMarker(marker) && this.beginAnnotationEditFromMarker(marker);
   }
 
   /**
    * Move the point under edit.
    */
   moveActivePoint(point: [number, number, number]): void {
-    if (!this.activePointEditId) {
-      return;
-    }
-    const annotation = this.annotations.get(this.activePointEditId);
-    if (!annotation || annotation.type !== 'point') {
-      return;
-    }
-    annotation.geometry = [...point] as [number, number, number];
-    const marker = this.markers.get(this.activePointEditId);
-    if (marker) {
-      this.updateMarkerGeometry(marker, annotation);
+    if (this.activeEdit) {
+      const annotation = this.annotations.get(this.activeEdit.annotationId);
+      if (annotation?.type === 'point') {
+        this.moveActiveAnnotation(point);
+      }
     }
   }
 
@@ -483,15 +562,12 @@ export class AnnotationManager {
    * Finalise the current point edit session and emit update.
    */
   endPointEdit(): void {
-    if (!this.activePointEditId) {
-      return;
+    if (this.activeEdit) {
+      const annotation = this.annotations.get(this.activeEdit.annotationId);
+      if (annotation?.type === 'point') {
+        this.endAnnotationEdit();
+      }
     }
-    const annotation = this.annotations.get(this.activePointEditId);
-    this.activePointEditId = null;
-    if (!annotation) {
-      return;
-    }
-    this.notifyAnnotationUpdated(annotation);
   }
 
   /**
@@ -570,8 +646,7 @@ export class AnnotationManager {
       'line-hit',
       false,
     );
-    const handles = this.createLineHandles(vertices);
-    handles.userData.annotationRole = 'line-handles';
+    const handles = this.createEditableLineHandles(vertices);
     handles.visible = isSelected && this.selectedIds.size === 1;
 
     group.add(underlay, visibleLine, hitLine, handles);
@@ -601,8 +676,8 @@ export class AnnotationManager {
       const role = child.userData.annotationRole as string | undefined;
       if (child instanceof Line2 && role?.startsWith('line-')) {
         this.replaceLineGeometry(child, points);
-      } else if (child instanceof THREE.Points && role === 'line-handles') {
-        this.replacePointsGeometry(child, vertices);
+      } else if (child instanceof THREE.Group && role === 'line-handles') {
+        this.syncEditableLineHandles(child, vertices);
       }
     });
   }
@@ -630,9 +705,8 @@ export class AnnotationManager {
         child.material.linewidth = this.config.lineUnderlayWidth;
       } else if (child instanceof Line2 && role === 'line-hit') {
         child.material.linewidth = this.config.lineHitWidth;
-      } else if (child instanceof THREE.Points && role === 'line-handles') {
-        child.visible = isSelected && this.selectedIds.size === 1;
-        child.material.size = this.config.lineVertexSize;
+      } else if (child instanceof THREE.Group && role === 'line-handles') {
+        child.visible = this.editingEnabled && isSelected && this.selectedIds.size === 1;
       }
     });
   }
@@ -758,7 +832,42 @@ export class AnnotationManager {
     oldGeometry.dispose();
   }
 
-  private createLineHandles(points: THREE.Vector3[]): THREE.Points {
+  private createEditableLineHandles(points: THREE.Vector3[]): THREE.Group {
+    const handles = new THREE.Group();
+    handles.userData.annotationRole = 'line-handles';
+    this.syncEditableLineHandles(handles, points);
+    return handles;
+  }
+
+  private syncEditableLineHandles(handles: THREE.Group, points: THREE.Vector3[]): void {
+    while (handles.children.length > points.length) {
+      const child = handles.children[handles.children.length - 1];
+      handles.remove(child);
+      this.disposeObjectMaterial(child);
+    }
+
+    points.forEach((point, index) => {
+      let handle = handles.children[index] as THREE.Sprite | undefined;
+      if (!handle) {
+        handle = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: this.createLineHandleTexture(),
+          transparent: true,
+          alphaTest: 0.1,
+          depthTest: false,
+          depthWrite: false,
+        }));
+        handle.userData.annotationRole = 'line-vertex-handle';
+        handle.userData.annotationHitRadius = this.config.lineVertexSize / 2 + 4;
+        handle.renderOrder = 12;
+        handles.add(handle);
+      }
+      handle.userData.annotationVertexIndex = index;
+      handle.userData.annotationHitRadius = this.config.lineVertexSize / 2 + 4;
+      handle.position.copy(point);
+    });
+  }
+
+  private createLineDraftHandles(points: THREE.Vector3[]): THREE.Points {
     const handles = new THREE.Points(
       new THREE.BufferGeometry().setFromPoints(points),
       new THREE.PointsMaterial({
@@ -774,7 +883,7 @@ export class AnnotationManager {
         depthWrite: false,
       }),
     );
-    handles.userData.annotationRole = 'line-handles';
+    handles.userData.annotationRole = 'line-draft-handles';
     handles.renderOrder = 12;
     return handles;
   }
@@ -812,7 +921,7 @@ export class AnnotationManager {
     previewLine.material.gapSize = 5;
     previewLine.material.needsUpdate = true;
 
-    const handles = this.createLineHandles([]);
+    const handles = this.createLineDraftHandles([]);
     handles.visible = true;
 
     group.add(committedUnderlay, committedLine, previewLine, handles);
@@ -899,6 +1008,17 @@ export class AnnotationManager {
     material.dispose();
   }
 
+  private disposeObjectMaterial(object: THREE.Object3D): void {
+    const material = (object as THREE.Object3D & {
+      material?: THREE.Material | THREE.Material[];
+    }).material;
+    if (Array.isArray(material)) {
+      material.forEach((entry) => this.disposeMaterial(entry));
+    } else if (material) {
+      this.disposeMaterial(material);
+    }
+  }
+
   private toCanvasColor(hex: number, alpha: number): string {
     const color = new THREE.Color(hex);
     return `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${alpha})`;
@@ -939,6 +1059,25 @@ export class AnnotationManager {
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     marker.position.copy(anchor).add(forward.multiplyScalar(-offsetDistance));
+  }
+
+  private getScreenSpaceScale(
+    object: THREE.Object3D,
+    camera: THREE.Camera,
+    canvasHeight: number,
+    pixelSize: number,
+  ): number {
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const worldPosition = object.getWorldPosition(new THREE.Vector3());
+      const distance = camera.position.distanceTo(worldPosition);
+      const fovRadians = camera.fov * Math.PI / 180;
+      return distance * Math.tan(fovRadians / 2) * 2 * pixelSize / canvasHeight;
+    }
+    if (camera instanceof THREE.OrthographicCamera) {
+      const visibleHeight = (camera.top - camera.bottom) / camera.zoom;
+      return visibleHeight * pixelSize / canvasHeight;
+    }
+    return 0.01;
   }
 
   private toVertexVectors(geometry: Annotation['geometry']): THREE.Vector3[] {
