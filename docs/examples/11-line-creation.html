@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Example 11 - Line Annotation Creation</title>
+  <style>
+    body { margin: 0; font-family: system-ui; }
+    #viewer { width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      max-width: 340px;
+      background: rgba(255, 255, 255, 0.92);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    button { padding: 6px 10px; cursor: pointer; }
+    button.active { background: #198754; color: #fff; border-color: #198754; }
+    #status { margin-top: 8px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="ui">
+    <button id="line" type="button">Draw line</button>
+    <div id="status">Enable the tool, then click vertices on the model. Double-click or press Enter to finish; Escape cancels.</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
+
+    const presenter = new ThreePresenter({
+      mount: 'viewer',
+      fileUrlResolver: new StaticBaseUrlResolver('../assets')
+    });
+    const annotations = [];
+    const lineButton = document.getElementById('line');
+    const status = document.getElementById('status');
+
+    lineButton.addEventListener('click', () => {
+      const active = presenter.getAnnotationCreationMode() === 'line';
+      presenter.setAnnotationCreationMode(active ? null : 'line');
+    });
+
+    presenter.onAnnotationCreationModeChange = (mode) => {
+      lineButton.classList.toggle('active', mode === 'line');
+      lineButton.textContent = mode === 'line' ? 'Stop drawing' : 'Draw line';
+    };
+
+    presenter.onAnnotationGeometryCreated = (type, geometry) => {
+      annotations.push({
+        id: `line-${annotations.length + 1}`,
+        label: `Line ${annotations.length + 1}`,
+        type,
+        geometry
+      });
+      presenter.getAnnotationManager().render(annotations);
+      status.textContent = `Created line with ${geometry.length} vertices. The line tool remains active.`;
+    };
+
+    await presenter.loadScene({
+      models: [{ id: 'model', file: 'venus.glb' }],
+      environment: { showGround: true }
+    });
+  </script>
+</body>
+</html>

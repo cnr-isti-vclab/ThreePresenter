@@ -68,6 +68,9 @@ export type {
 export { AnnotationManager } from './managers/AnnotationManager';
 export type {
   AnnotationConfig,
+  AnnotationCreationMode,
+  AnnotationCreationModeChangeCallback,
+  AnnotationGeometryCreatedCallback,
   SelectionChangeCallback,
   PointPickedCallback
 } from './types/AnnotationTypes';

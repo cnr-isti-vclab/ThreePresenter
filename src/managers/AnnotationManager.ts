@@ -26,6 +26,9 @@
  */
 
 import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import type {
   Annotation,
   AnnotationConfig,
@@ -50,10 +53,26 @@ const DEFAULT_CONFIG: Required<AnnotationConfig> = {
   selectedPointStrokeColor: 0x1e3a8a,
   pointStrokeWidth: 6,
   pointShadowOpacity: 0.8,
+  lineWidth: 3,
+  lineUnderlayWidth: 5,
+  lineUnderlayColor: 0x202020,
+  lineHitWidth: 12,
+  lineVertexSize: 12,
 };
 
 const POINT_TEXTURE_SIZE = 128;
 const POINT_TEXTURE_RADIUS = 24;
+type ScreenSpaceLineMaterial = LineMaterial & { linewidth: number };
+
+interface LineDraft {
+  vertices: THREE.Vector3[];
+  previewPoint: THREE.Vector3 | null;
+  group: THREE.Group;
+  committedUnderlay: Line2;
+  committedLine: Line2;
+  previewLine: Line2;
+  handles: THREE.Points;
+}
 
 /**
  * AnnotationManager - Manages annotation markers in a Three.js scene
@@ -67,6 +86,7 @@ export class AnnotationManager {
   private annotations: Map<string, Annotation> = new Map();
   private selectedIds: Set<string> = new Set();
   private activePointEditId: string | null = null;
+  private lineDraft: LineDraft | null = null;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -323,6 +343,57 @@ export class AnnotationManager {
     }
   }
 
+  /** Add a committed surface vertex to the active line draft. */
+  addLineDraftVertex(point: [number, number, number]): void {
+    if (!this.lineDraft) {
+      this.lineDraft = this.createLineDraft();
+      this.scene.add(this.lineDraft.group);
+    }
+
+    this.lineDraft.vertices.push(new THREE.Vector3(point[0], point[1], point[2]));
+    this.lineDraft.previewPoint = null;
+    this.updateLineDraftGeometry();
+  }
+
+  /** Update the rubber-band endpoint without committing a new vertex. */
+  updateLineDraftPreview(point: [number, number, number] | null): void {
+    if (!this.lineDraft) {
+      return;
+    }
+    this.lineDraft.previewPoint = point
+      ? new THREE.Vector3(point[0], point[1], point[2])
+      : null;
+    this.updateLineDraftGeometry();
+  }
+
+  hasLineDraft(): boolean {
+    return this.lineDraft !== null;
+  }
+
+  /** Commit a valid line draft, or discard it when fewer than two vertices exist. */
+  finalizeLineDraft(): [number, number, number][] | null {
+    if (!this.lineDraft || this.lineDraft.vertices.length < 2) {
+      this.cancelLineDraft();
+      return null;
+    }
+
+    const geometry = this.lineDraft.vertices.map(
+      (point) => [point.x, point.y, point.z] as [number, number, number],
+    );
+    this.cancelLineDraft();
+    return geometry;
+  }
+
+  /** Remove the current transient line without emitting a persisted annotation. */
+  cancelLineDraft(): void {
+    if (!this.lineDraft) {
+      return;
+    }
+    this.scene.remove(this.lineDraft.group);
+    this.disposeLineDraft(this.lineDraft);
+    this.lineDraft = null;
+  }
+
   /**
    * Update configuration
    * @param config - Partial configuration to merge with current config
@@ -343,6 +414,7 @@ export class AnnotationManager {
    * Dispose of all resources
    */
   dispose(): void {
+    this.cancelLineDraft();
     // Remove all markers from scene
     for (const [id] of this.markers.entries()) {
       this.removeMarker(id);
@@ -467,23 +539,43 @@ export class AnnotationManager {
     annotation: Annotation,
     isSelected: boolean,
     closed: boolean
-  ): THREE.Line {
+  ): THREE.Group {
     const vertices = this.toVertexVectors(annotation.geometry);
     const points = closed && vertices.length > 2
       ? [...vertices, vertices[0].clone()]
       : vertices;
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-      color: isSelected ? this.config.selectedColor : this.config.color,
-      transparent: true,
-      opacity: isSelected ? this.config.selectedOpacity : this.config.opacity,
-      depthTest: true,
-      depthWrite: false,
-    });
-    const line = new THREE.Line(geometry, material);
-    line.userData.annotationId = annotation.id;
-    line.userData.annotationType = annotation.type;
-    return line;
+    const group = new THREE.Group();
+    group.userData.annotationId = annotation.id;
+    group.userData.annotationType = annotation.type;
+
+    const underlay = this.createScreenSpaceLine(
+      points,
+      this.config.lineUnderlayColor,
+      this.config.lineUnderlayWidth,
+      0.9,
+      'line-underlay',
+    );
+    const visibleLine = this.createScreenSpaceLine(
+      points,
+      isSelected ? this.config.selectedColor : this.config.color,
+      this.config.lineWidth,
+      isSelected ? this.config.selectedOpacity : this.config.opacity,
+      'line-visible',
+    );
+    const hitLine = this.createScreenSpaceLine(
+      points,
+      0xffffff,
+      this.config.lineHitWidth,
+      0,
+      'line-hit',
+      false,
+    );
+    const handles = this.createLineHandles(vertices);
+    handles.userData.annotationRole = 'line-handles';
+    handles.visible = isSelected && this.selectedIds.size === 1;
+
+    group.add(underlay, visibleLine, hitLine, handles);
+    return group;
   }
 
   /**
@@ -501,14 +593,18 @@ export class AnnotationManager {
       return;
     }
 
-    const line = marker as THREE.Line;
-    const oldGeometry = line.geometry;
     const vertices = this.toVertexVectors(annotation.geometry);
     const points = annotation.type === 'area' && vertices.length > 2
       ? [...vertices, vertices[0].clone()]
       : vertices;
-    line.geometry = new THREE.BufferGeometry().setFromPoints(points);
-    oldGeometry.dispose();
+    marker.traverse((child) => {
+      const role = child.userData.annotationRole as string | undefined;
+      if (child instanceof Line2 && role?.startsWith('line-')) {
+        this.replaceLineGeometry(child, points);
+      } else if (child instanceof THREE.Points && role === 'line-handles') {
+        this.replacePointsGeometry(child, vertices);
+      }
+    });
   }
 
   /**
@@ -523,32 +619,22 @@ export class AnnotationManager {
       return;
     }
 
-    const color = isSelected ? this.config.selectedColor : this.config.color;
-    const opacity = isSelected ? this.config.selectedOpacity : this.config.opacity;
     marker.traverse((child) => {
-      const material = (child as THREE.Mesh | THREE.Line).material;
-      if (!material) {
-        return;
-      }
-      if (Array.isArray(material)) {
-        material.forEach((entry) => this.applyMaterialAppearance(entry, color, opacity));
-      } else {
-        this.applyMaterialAppearance(material, color, opacity);
+      const role = child.userData.annotationRole as string | undefined;
+      if (child instanceof Line2 && role === 'line-visible') {
+        child.material.color.setHex(isSelected ? this.config.selectedColor : this.config.color);
+        child.material.opacity = isSelected ? this.config.selectedOpacity : this.config.opacity;
+        child.material.linewidth = this.config.lineWidth;
+      } else if (child instanceof Line2 && role === 'line-underlay') {
+        child.material.color.setHex(this.config.lineUnderlayColor);
+        child.material.linewidth = this.config.lineUnderlayWidth;
+      } else if (child instanceof Line2 && role === 'line-hit') {
+        child.material.linewidth = this.config.lineHitWidth;
+      } else if (child instanceof THREE.Points && role === 'line-handles') {
+        child.visible = isSelected && this.selectedIds.size === 1;
+        child.material.size = this.config.lineVertexSize;
       }
     });
-  }
-
-  private applyMaterialAppearance(material: THREE.Material, color: number, opacity: number): void {
-    const maybeColor = material as THREE.Material & { color?: THREE.Color; opacity?: number; transparent?: boolean };
-    if (maybeColor.color) {
-      maybeColor.color.setHex(color);
-    }
-    if (typeof maybeColor.opacity === 'number') {
-      maybeColor.opacity = opacity;
-    }
-    if ('transparent' in maybeColor) {
-      maybeColor.transparent = opacity < 1;
-    }
   }
 
   /**
@@ -568,20 +654,22 @@ export class AnnotationManager {
     const marker = this.markers.get(id);
     if (marker) {
       this.scene.remove(marker);
-      if (marker instanceof THREE.Sprite) {
-        marker.material.map?.dispose();
-        marker.material.dispose();
-      }
       marker.traverse((child) => {
-        const geometry = (child as THREE.Mesh | THREE.Line).geometry;
+        const renderable = child as THREE.Object3D & {
+          geometry?: THREE.BufferGeometry;
+          material?: THREE.Material | THREE.Material[];
+        };
+        const geometry = renderable.geometry;
         if (geometry) {
           geometry.dispose();
         }
-        const material = (child as THREE.Mesh | THREE.Line).material;
+        const material = renderable.material;
         if (Array.isArray(material)) {
-          material.forEach((entry) => entry.dispose());
+          material.forEach((entry) => this.disposeMaterial(entry));
         } else {
-          material?.dispose();
+          if (material) {
+            this.disposeMaterial(material);
+          }
         }
       });
       this.markers.delete(id);
@@ -625,6 +713,190 @@ export class AnnotationManager {
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
+  }
+
+  private createScreenSpaceLine(
+    points: THREE.Vector3[],
+    color: number,
+    width: number,
+    opacity: number,
+    role: string,
+    colorWrite: boolean = true,
+  ): Line2 {
+    const geometry = this.createLineGeometry(points);
+    const material = new LineMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthTest: true,
+      depthWrite: false,
+      colorWrite,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -4,
+      alphaToCoverage: true,
+    }) as ScreenSpaceLineMaterial;
+    material.linewidth = width;
+
+    const line = new Line2(geometry, material);
+    line.userData.annotationRole = role;
+    line.renderOrder = role === 'line-underlay' ? 10 : 11;
+    return line;
+  }
+
+  private createLineGeometry(points: THREE.Vector3[]): LineGeometry {
+    const geometry = new LineGeometry();
+    if (points.length >= 2) {
+      geometry.setPositions(points.flatMap((point) => [point.x, point.y, point.z]));
+    }
+    return geometry;
+  }
+
+  private replaceLineGeometry(line: Line2, points: THREE.Vector3[]): void {
+    const oldGeometry = line.geometry;
+    line.geometry = this.createLineGeometry(points);
+    oldGeometry.dispose();
+  }
+
+  private createLineHandles(points: THREE.Vector3[]): THREE.Points {
+    const handles = new THREE.Points(
+      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.PointsMaterial({
+        color: 0xffffff,
+        map: this.createLineHandleTexture(),
+        size: this.config.lineVertexSize,
+        sizeAttenuation: false,
+        transparent: true,
+        alphaTest: 0.1,
+        // Handles are an editing overlay and must not disappear into the
+        // surface at the exact raycast position.
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    handles.userData.annotationRole = 'line-handles';
+    handles.renderOrder = 12;
+    return handles;
+  }
+
+  private createLineDraft(): LineDraft {
+    const group = new THREE.Group();
+    group.name = 'annotation-line-draft';
+    group.renderOrder = 20;
+
+    const committedUnderlay = this.createScreenSpaceLine(
+      [],
+      this.config.lineUnderlayColor,
+      this.config.lineUnderlayWidth,
+      0.9,
+      'line-underlay',
+    );
+    const committedLine = this.createScreenSpaceLine(
+      [],
+      this.config.pointStrokeColor,
+      this.config.lineWidth,
+      1,
+      'line-visible',
+    );
+    const previewLine = this.createScreenSpaceLine(
+      [],
+      this.config.pointStrokeColor,
+      this.config.lineWidth,
+      0.65,
+      'line-preview',
+      true,
+    );
+    previewLine.visible = false;
+    previewLine.material.dashed = true;
+    previewLine.material.dashSize = 8;
+    previewLine.material.gapSize = 5;
+    previewLine.material.needsUpdate = true;
+
+    const handles = this.createLineHandles([]);
+    handles.visible = true;
+
+    group.add(committedUnderlay, committedLine, previewLine, handles);
+    return {
+      vertices: [],
+      previewPoint: null,
+      group,
+      committedUnderlay,
+      committedLine,
+      previewLine,
+      handles,
+    };
+  }
+
+  private updateLineDraftGeometry(): void {
+    const draft = this.lineDraft;
+    if (!draft) {
+      return;
+    }
+
+    this.replaceLineGeometry(draft.committedUnderlay, draft.vertices);
+    this.replaceLineGeometry(draft.committedLine, draft.vertices);
+    this.replacePointsGeometry(draft.handles, draft.vertices);
+
+    const lastVertex = draft.vertices[draft.vertices.length - 1];
+    if (lastVertex && draft.previewPoint) {
+      this.replaceLineGeometry(draft.previewLine, [lastVertex, draft.previewPoint]);
+      draft.previewLine.computeLineDistances();
+      draft.previewLine.visible = true;
+    } else {
+      this.replaceLineGeometry(draft.previewLine, []);
+      draft.previewLine.visible = false;
+    }
+  }
+
+  private replacePointsGeometry(object: THREE.Points, points: THREE.Vector3[]): void {
+    const oldGeometry = object.geometry;
+    object.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    oldGeometry.dispose();
+  }
+
+  private createLineHandleTexture(): THREE.CanvasTexture {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to create line handle texture context');
+    }
+
+    context.beginPath();
+    context.arc(size / 2, size / 2, 24, 0, Math.PI * 2);
+    context.fillStyle = '#ffffff';
+    context.fill();
+    context.lineWidth = 8;
+    context.strokeStyle = '#333333';
+    context.stroke();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private disposeLineDraft(draft: LineDraft): void {
+    draft.group.traverse((child) => {
+      const renderable = child as THREE.Object3D & {
+        geometry?: THREE.BufferGeometry;
+        material?: THREE.Material | THREE.Material[];
+      };
+      renderable.geometry?.dispose();
+      const material = renderable.material;
+      if (!material) {
+        return;
+      }
+      const materials = Array.isArray(material) ? material : [material];
+      materials.forEach((entry) => this.disposeMaterial(entry));
+    });
+  }
+
+  private disposeMaterial(material: THREE.Material): void {
+    const textured = material as THREE.Material & { map?: THREE.Texture | null };
+    textured.map?.dispose();
+    material.dispose();
   }
 
   private toCanvasColor(hex: number, alpha: number): string {

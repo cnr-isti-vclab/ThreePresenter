@@ -12,6 +12,11 @@ import { LightingManager } from './managers/LightingManager';
 import { ModelLoader } from './managers/ModelLoader';
 import { InputController } from './managers/InputController';
 import { RenderLoop } from './managers/RenderLoop';
+import type {
+  AnnotationCreationMode,
+  AnnotationCreationModeChangeCallback,
+  AnnotationGeometryCreatedCallback,
+} from './types/AnnotationTypes';
 // Note: heavy three/examples and viewport gizmo are dynamically imported where needed
 import type {
   SceneDescription,
@@ -101,14 +106,16 @@ export class ThreePresenter {
   ground: THREE.GridHelper | null = null;
   scaleIndicator: ScaleIndicator | null = null;
   viewportGizmo: any = null;
-  isPickingMode: boolean = false;
+  private annotationCreationMode: AnnotationCreationMode = null;
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
+  onAnnotationGeometryCreated: AnnotationGeometryCreatedCallback | null = null;
   onMeasurementCreated?: (measurement: MeasurementRecord) => void;
   // State change callbacks
   onLightChange?: (enabled: boolean) => void;
   onEnvChange?: (enabled: boolean) => void;
   onPickingModeChange?: (enabled: boolean) => void;
+  onAnnotationCreationModeChange?: AnnotationCreationModeChangeCallback;
   onMeasurementModeChange?: (enabled: boolean) => void;
   onCameraModeChange?: (isOrthographic: boolean) => void;
   initialCameraPosition: THREE.Vector3 = new THREE.Vector3(0, 0, 2);
@@ -250,11 +257,18 @@ export class ThreePresenter {
         this.animateCameraTarget(point);
       },
       onModelClick: (point: THREE.Vector3) => {
-        if (this.isPickingMode) {
+        if (this.annotationCreationMode === 'point') {
           const coords: [number, number, number] = [point.x, point.y, point.z];
           console.log('📍 Picked 3D point:', coords.map(v => v.toFixed(4)));
+          this.onAnnotationGeometryCreated?.('point', coords);
           this.onPointPicked?.(coords);
-          this.exitPickingMode();
+          this.setAnnotationCreationMode(null);
+          return;
+        }
+        if (this.annotationCreationMode !== null) {
+          if (this.annotationCreationMode === 'line') {
+            this.annotationManager.addLineDraftVertex([point.x, point.y, point.z]);
+          }
           return;
         }
         if (!this.isMeasurementMode) return;
@@ -273,6 +287,28 @@ export class ThreePresenter {
       },
       onBackgroundClick: (isMulti) => {
         if (!isMulti) this.annotationManager.clearSelection();
+      },
+      onAnnotationCreationPreview: (point) => {
+        if (this.annotationCreationMode !== 'line') {
+          return;
+        }
+        this.annotationManager.updateLineDraftPreview(
+          point ? [point.x, point.y, point.z] : null,
+        );
+      },
+      onAnnotationCreationComplete: () => {
+        if (this.annotationCreationMode !== 'line') {
+          return;
+        }
+        const geometry = this.annotationManager.finalizeLineDraft();
+        if (geometry) {
+          this.onAnnotationGeometryCreated?.('line', geometry);
+        }
+      },
+      onAnnotationCreationCancel: () => {
+        if (this.annotationCreationMode === 'line') {
+          this.annotationManager.cancelLineDraft();
+        }
       },
       canStartAnnotationDrag: (object) => this.annotationManager.canEditPointFromMarker(object),
       onAnnotationDragLockChange: (locked) => {
@@ -378,15 +414,55 @@ export class ThreePresenter {
     return this.isPickingMode;
   }
 
+  /** Backward-compatible point-picking state. */
+  get isPickingMode(): boolean {
+    return this.annotationCreationMode === 'point';
+  }
+
+  /**
+   * Select the geometry type created by model interaction.
+   * Line mode is exposed here; its sequence session is implemented separately.
+   */
+  setAnnotationCreationMode(mode: AnnotationCreationMode): void {
+    if (mode === this.annotationCreationMode) {
+      return;
+    }
+
+    if (mode !== null && this.isMeasurementMode) {
+      this.exitMeasurementMode();
+    }
+
+    const previousMode = this.annotationCreationMode;
+    if (previousMode === 'line' && mode !== 'line') {
+      this.annotationManager.cancelLineDraft();
+    }
+    this.annotationCreationMode = mode;
+    this.inputController.setAnnotationCreationMode(mode);
+    if (mode !== null) {
+      this.inputController.setMeasurementMode(false);
+    }
+
+    this.onAnnotationCreationModeChange?.(mode);
+    const wasPointPicking = previousMode === 'point';
+    const isPointPicking = mode === 'point';
+    if (wasPointPicking !== isPointPicking) {
+      this.onPickingModeChange?.(isPointPicking);
+    }
+  }
+
+  getAnnotationCreationMode(): AnnotationCreationMode {
+    return this.annotationCreationMode;
+  }
+
+  cancelAnnotationCreation(): void {
+    this.setAnnotationCreationMode(null);
+  }
+
   /**
    * Enter picking mode
    */
   private enterPickingMode() {
-    if (this.isMeasurementMode) this.exitMeasurementMode();
-    this.isPickingMode = true;
-    this.inputController.setPickingMode(true);
-    this.inputController.setMeasurementMode(false);
-    this.onPickingModeChange?.(true);
+    this.setAnnotationCreationMode('point');
     console.log('✏️ Entered picking mode - click on model to pick a point');
   }
 
@@ -394,9 +470,10 @@ export class ThreePresenter {
    * Exit picking mode
    */
   private exitPickingMode() {
-    this.isPickingMode = false;
-    this.inputController.setPickingMode(false);
-    this.onPickingModeChange?.(false);
+    if (this.annotationCreationMode !== 'point') {
+      return;
+    }
+    this.setAnnotationCreationMode(null);
     console.log('✅ Exited picking mode');
   }
 
@@ -415,10 +492,9 @@ export class ThreePresenter {
    * Enter measurement mode
    */
   enterMeasurementMode() {
-    if (this.isPickingMode) this.exitPickingMode();
+    if (this.annotationCreationMode !== null) this.setAnnotationCreationMode(null);
     this.isMeasurementMode = true;
     this.inputController.setMeasurementMode(true);
-    this.inputController.setPickingMode(false);
     this.onMeasurementModeChange?.(true);
     console.log('📏 Entered measurement mode - click two points on model');
   }

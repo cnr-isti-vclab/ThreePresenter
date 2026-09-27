@@ -11,6 +11,12 @@
 export type AnnotationType = 'point' | 'line' | 'area';
 
 /**
+ * Annotation geometry currently being created interactively.
+ * `null` restores normal annotation selection/navigation.
+ */
+export type AnnotationCreationMode = 'point' | 'line' | null;
+
+/**
  * Geometry data for an annotation
  * - Point: [x, y, z]
  * - Line/Area: Array of [x, y, z] points
@@ -67,6 +73,16 @@ export interface AnnotationConfig {
   pointStrokeWidth?: number;
   /** Point marker shadow alpha (0-1) */
   pointShadowOpacity?: number;
+  /** Visible line width in screen pixels */
+  lineWidth?: number;
+  /** Width of the dark contrast stroke behind lines, in screen pixels */
+  lineUnderlayWidth?: number;
+  /** Color of the contrast stroke behind lines (hex) */
+  lineUnderlayColor?: number;
+  /** Invisible line width used for pointer selection, in screen pixels */
+  lineHitWidth?: number;
+  /** Screen-space size of vertices shown on a selected line */
+  lineVertexSize?: number;
 }
 
 /**
@@ -78,6 +94,19 @@ export type SelectionChangeCallback = (selectedIds: string[]) => void;
  * Callback type for annotation picking (point selection on model)
  */
 export type PointPickedCallback = (point: [number, number, number]) => void;
+
+/**
+ * Callback fired after the user completes an annotation geometry.
+ */
+export type AnnotationGeometryCreatedCallback = (
+  type: Exclude<AnnotationCreationMode, null>,
+  geometry: AnnotationGeometry,
+) => void;
+
+/**
+ * Callback fired whenever the interactive annotation creation mode changes.
+ */
+export type AnnotationCreationModeChangeCallback = (mode: AnnotationCreationMode) => void;
 
 /**
  * Callback type for annotation geometry edit lifecycle.

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { AnnotationCreationMode } from '../types/AnnotationTypes';
 
 /**
  * Configuration for InputController initialization
@@ -16,6 +17,12 @@ export interface InputControllerConfig {
   onModelDoubleClick: (point: THREE.Vector3) => void;
   /** Called when user single-clicks on a 3D model (used by modal tools like picking/measurement) */
   onModelClick?: (point: THREE.Vector3) => void;
+  /** Called while a sequence annotation tool previews its next surface point */
+  onAnnotationCreationPreview?: (point: THREE.Vector3 | null) => void;
+  /** Called when a sequence annotation tool should commit its current draft */
+  onAnnotationCreationComplete?: () => void;
+  /** Called when a sequence annotation tool should discard its current draft */
+  onAnnotationCreationCancel?: () => void;
   /** Called when user clicks on an annotation marker */
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
   /** Called when user clicks on empty space (background) */
@@ -66,10 +73,11 @@ export interface InputControllerConfig {
 export class InputController {
   private raycaster = new THREE.Raycaster();
   private mouse = new THREE.Vector2();
-  private isPickingMode = false;
+  private annotationCreationMode: AnnotationCreationMode = null;
   private isMeasurementMode = false;
   private enabled = true;
   private pointerDownCandidate: { object: THREE.Object3D; clientX: number; clientY: number; pointerId: number } | null = null;
+  private creationPointer: { pointerId: number; clientX: number; clientY: number; moved: boolean } | null = null;
   private activeDragPointerId: number | null = null;
   private suppressNextClick = false;
   private hoverCursor: string | null = null;
@@ -82,6 +90,7 @@ export class InputController {
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerLeave = this.handlePointerLeave.bind(this);
+    this.handleKeyDown = this.handleKeyDown.bind(this);
 
     this.attachListeners();
   }
@@ -95,9 +104,11 @@ export class InputController {
     this.config.domElement.addEventListener('pointerup', this.handlePointerUp);
     this.config.domElement.addEventListener('pointercancel', this.handlePointerUp);
     this.config.domElement.addEventListener('pointerleave', this.handlePointerLeave);
+    document.addEventListener('keydown', this.handleKeyDown);
   }
 
   dispose() {
+    this.releaseCreationPointer();
     window.removeEventListener('resize', this.handleResize);
     this.config.domElement.removeEventListener('dblclick', this.handleDoubleClick);
     this.config.domElement.removeEventListener('click', this.handleClick);
@@ -106,11 +117,28 @@ export class InputController {
     this.config.domElement.removeEventListener('pointerup', this.handlePointerUp);
     this.config.domElement.removeEventListener('pointercancel', this.handlePointerUp);
     this.config.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    document.removeEventListener('keydown', this.handleKeyDown);
   }
 
-  setPickingMode(enabled: boolean) {
-    this.isPickingMode = enabled;
+  setAnnotationCreationMode(mode: AnnotationCreationMode) {
+    if (this.annotationCreationMode === 'line' && mode !== 'line') {
+      this.releaseCreationPointer();
+    }
+    this.annotationCreationMode = mode;
     this.updateCursor();
+  }
+
+  getAnnotationCreationMode(): AnnotationCreationMode {
+    return this.annotationCreationMode;
+  }
+
+  /** Backward-compatible point-picking mode wrapper. */
+  setPickingMode(enabled: boolean) {
+    if (enabled) {
+      this.setAnnotationCreationMode('point');
+    } else if (this.annotationCreationMode === 'point') {
+      this.setAnnotationCreationMode(null);
+    }
   }
 
   setMeasurementMode(enabled: boolean) {
@@ -119,7 +147,7 @@ export class InputController {
   }
 
   isPickingEnabled(): boolean {
-    return this.isPickingMode;
+    return this.annotationCreationMode === 'point';
   }
 
   isMeasurementEnabled(): boolean {
@@ -140,7 +168,7 @@ export class InputController {
   }
 
   private updateCursor() {
-    if (this.isPickingMode || this.isMeasurementMode) {
+    if (this.annotationCreationMode !== null || this.isMeasurementMode) {
       this.config.domElement.style.cursor = 'crosshair';
       return;
     }
@@ -169,12 +197,12 @@ export class InputController {
 
   private getAnnotationIntersectionObject(): THREE.Object3D | null {
     const markers = this.config.getAnnotations();
-    const intersects = this.raycaster.intersectObjects(markers, false);
+    const intersects = this.raycaster.intersectObjects(markers, true);
     return intersects.length > 0 ? intersects[0].object : null;
   }
 
   private updateHoverCursorFromEvent(event: MouseEvent | PointerEvent) {
-    if (this.isPickingMode || this.isMeasurementMode || this.activeDragPointerId !== null) {
+    if (this.annotationCreationMode !== null || this.isMeasurementMode || this.activeDragPointerId !== null) {
       this.updateCursor();
       return;
     }
@@ -201,7 +229,13 @@ export class InputController {
 
   handleDoubleClick(event: MouseEvent) {
     if (!this.enabled) return;
-    if (this.isMeasurementMode || this.isPickingMode) return;
+    if (this.annotationCreationMode === 'line') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.config.onAnnotationCreationComplete?.();
+      return;
+    }
+    if (this.isMeasurementMode || this.annotationCreationMode !== null) return;
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
@@ -228,7 +262,12 @@ export class InputController {
       return;
     }
 
-    if (this.isPickingMode) {
+    if (this.annotationCreationMode !== null) {
+      // Native dblclick dispatches a second click first. The first click places
+      // the final vertex; ignore the second so it is not duplicated.
+      if (event.detail > 1) {
+        return;
+      }
       const point = this.getModelIntersectionPoint();
       if (point) {
         this.config.onModelClick?.(point);
@@ -238,7 +277,7 @@ export class InputController {
 
     // Check Annotations
     const markers = this.config.getAnnotations();
-    const intersects = this.raycaster.intersectObjects(markers, false);
+    const intersects = this.raycaster.intersectObjects(markers, true);
 
     const isMulti = event.ctrlKey || event.metaKey;
 
@@ -250,7 +289,22 @@ export class InputController {
   }
 
   private handlePointerDown(event: PointerEvent) {
-    if (!this.enabled || this.isPickingMode || this.isMeasurementMode) return;
+    if (!this.enabled) return;
+    if (this.annotationCreationMode === 'line') {
+      if (event.button !== 0) {
+        return;
+      }
+      this.creationPointer = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        moved: false,
+      };
+      this.config.domElement.setPointerCapture(event.pointerId);
+      this.config.onAnnotationDragLockChange?.(true);
+      return;
+    }
+    if (this.annotationCreationMode !== null || this.isMeasurementMode) return;
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
       return;
     }
@@ -276,6 +330,23 @@ export class InputController {
 
   private handlePointerMove(event: PointerEvent) {
     if (!this.enabled) return;
+
+    if (this.annotationCreationMode === 'line') {
+      if (this.creationPointer?.pointerId === event.pointerId) {
+        const dx = event.clientX - this.creationPointer.clientX;
+        const dy = event.clientY - this.creationPointer.clientY;
+        if ((dx * dx + dy * dy) >= 9) {
+          this.creationPointer.moved = true;
+        }
+      }
+      if (event.buttons === 0) {
+        this.updateMouseCoordinates(event);
+        this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+        this.config.onAnnotationCreationPreview?.(this.getModelIntersectionPoint());
+      }
+      this.updateCursor();
+      return;
+    }
 
     if (this.activeDragPointerId !== null) {
       if (event.pointerId !== this.activeDragPointerId) {
@@ -328,6 +399,16 @@ export class InputController {
   }
 
   private handlePointerUp(event: PointerEvent) {
+    if (this.creationPointer?.pointerId === event.pointerId) {
+      const moved = this.creationPointer.moved;
+      this.releaseCreationPointer();
+      if (moved) {
+        this.suppressNextClick = true;
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (this.activeDragPointerId !== null && event.pointerId === this.activeDragPointerId) {
       this.updateMouseCoordinates(event);
       this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
@@ -356,10 +437,38 @@ export class InputController {
   }
 
   private handlePointerLeave() {
-    if (this.isPickingMode || this.isMeasurementMode || this.activeDragPointerId !== null) {
+    if (this.annotationCreationMode !== null || this.isMeasurementMode || this.activeDragPointerId !== null) {
+      if (this.annotationCreationMode === 'line') {
+        this.config.onAnnotationCreationPreview?.(null);
+      }
       return;
     }
     this.hoverCursor = null;
     this.updateCursor();
+  }
+
+  private handleKeyDown(event: KeyboardEvent) {
+    if (!this.enabled || this.annotationCreationMode !== 'line') {
+      return;
+    }
+    if (event.key === 'Escape') {
+      this.config.onAnnotationCreationCancel?.();
+      event.preventDefault();
+    } else if (event.key === 'Enter') {
+      this.config.onAnnotationCreationComplete?.();
+      event.preventDefault();
+    }
+  }
+
+  private releaseCreationPointer() {
+    if (!this.creationPointer) {
+      return;
+    }
+    const pointerId = this.creationPointer.pointerId;
+    this.creationPointer = null;
+    if (this.config.domElement.hasPointerCapture(pointerId)) {
+      this.config.domElement.releasePointerCapture(pointerId);
+    }
+    this.config.onAnnotationDragLockChange?.(false);
   }
 }
