@@ -25,6 +25,16 @@ export interface InputControllerConfig {
   onAnnotationCreationCancel?: () => void;
   /** Called when user clicks on an annotation marker */
   onAnnotationClick: (object: THREE.Object3D, isMultiSelect: boolean) => void;
+  /** Called when user clicks an editable line vertex handle */
+  onAnnotationVertexSelect?: (object: THREE.Object3D, vertexIndex: number) => boolean;
+  /** Called when user double-clicks an editable line segment */
+  onAnnotationSegmentDoubleClick?: (
+    object: THREE.Object3D,
+    segmentIndex: number,
+    point: THREE.Vector3,
+  ) => boolean;
+  /** Called when Delete or Backspace targets the selected line vertex */
+  onAnnotationVertexDelete?: () => boolean;
   /** Called when user clicks on empty space (background) */
   onBackgroundClick: (isMultiSelect: boolean) => void;
   /** Returns true when the pointer-down target can start annotation dragging */
@@ -37,6 +47,8 @@ export interface InputControllerConfig {
   onAnnotationDragMove?: (point: THREE.Vector3) => void;
   /** Called when an annotation drag session ends */
   onAnnotationDragEnd?: () => void;
+  /** Called when an annotation drag session is cancelled */
+  onAnnotationDragCancel?: () => void;
 }
 
 interface AnnotationDragTarget {
@@ -276,6 +288,22 @@ export class InputController {
     };
   }
 
+  private getLineSegmentAtPointer(): { object: THREE.Object3D; segmentIndex: number } | null {
+    const intersections = this.raycaster.intersectObjects(this.config.getAnnotations(), true);
+    for (const intersection of intersections) {
+      if (
+        intersection.object.userData.annotationRole === 'line-hit' &&
+        Number.isInteger(intersection.faceIndex)
+      ) {
+        return {
+          object: intersection.object,
+          segmentIndex: Number(intersection.faceIndex),
+        };
+      }
+    }
+    return null;
+  }
+
   private isObjectVisible(object: THREE.Object3D): boolean {
     let current: THREE.Object3D | null = object;
     while (current) {
@@ -330,7 +358,26 @@ export class InputController {
 
     this.updateMouseCoordinates(event);
     this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+    if (this.getLineHandleAtPointer()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const point = this.getModelIntersectionPoint();
+    const segment = this.getLineSegmentAtPointer();
+    if (
+      point &&
+      segment &&
+      (this.config.onAnnotationSegmentDoubleClick?.(
+        segment.object,
+        segment.segmentIndex,
+        point,
+      ) ?? false)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (point) {
       this.config.onModelDoubleClick(point);
     }
@@ -367,6 +414,17 @@ export class InputController {
     }
 
     // Check Annotations
+    const handleTarget = this.getLineHandleAtPointer();
+    if (
+      handleTarget?.vertexIndex !== undefined &&
+      (this.config.onAnnotationVertexSelect?.(
+        handleTarget.object,
+        handleTarget.vertexIndex,
+      ) ?? false)
+    ) {
+      return;
+    }
+
     const markers = this.config.getAnnotations();
     const intersects = this.raycaster.intersectObjects(markers, true);
 
@@ -501,13 +559,17 @@ export class InputController {
     }
 
     if (this.activeDragPointerId !== null && event.pointerId === this.activeDragPointerId) {
-      this.updateMouseCoordinates(event);
-      this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
-      const point = this.getModelIntersectionPoint();
-      if (point) {
-        this.config.onAnnotationDragMove?.(point);
+      if (event.type === 'pointercancel') {
+        this.config.onAnnotationDragCancel?.();
+      } else {
+        this.updateMouseCoordinates(event);
+        this.raycaster.setFromCamera(this.mouse, this.config.getCamera());
+        const point = this.getModelIntersectionPoint();
+        if (point) {
+          this.config.onAnnotationDragMove?.(point);
+        }
+        this.config.onAnnotationDragEnd?.();
       }
-      this.config.onAnnotationDragEnd?.();
       if (this.config.domElement.hasPointerCapture(event.pointerId)) {
         this.config.domElement.releasePointerCapture(event.pointerId);
       }
@@ -539,7 +601,26 @@ export class InputController {
   }
 
   private handleKeyDown(event: KeyboardEvent) {
-    if (!this.enabled || this.annotationCreationMode !== 'line') {
+    if (!this.enabled) {
+      return;
+    }
+    if (event.key === 'Escape' && this.activeDragPointerId !== null) {
+      this.cancelActiveAnnotationDrag();
+      event.preventDefault();
+      return;
+    }
+    if (
+      this.annotationCreationMode === null &&
+      !this.isMeasurementMode &&
+      this.activeDragPointerId === null &&
+      (event.key === 'Delete' || event.key === 'Backspace') &&
+      !this.isTextInputTarget(event.target) &&
+      (this.config.onAnnotationVertexDelete?.() ?? false)
+    ) {
+      event.preventDefault();
+      return;
+    }
+    if (this.annotationCreationMode !== 'line') {
       return;
     }
     if (event.key === 'Escape') {
@@ -549,6 +630,30 @@ export class InputController {
       this.config.onAnnotationCreationComplete?.();
       event.preventDefault();
     }
+  }
+
+  private isTextInputTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+  }
+
+  private cancelActiveAnnotationDrag() {
+    const pointerId = this.activeDragPointerId;
+    if (pointerId === null) {
+      return;
+    }
+    this.config.onAnnotationDragCancel?.();
+    if (this.config.domElement.hasPointerCapture(pointerId)) {
+      this.config.domElement.releasePointerCapture(pointerId);
+    }
+    this.activeDragPointerId = null;
+    this.pointerDownCandidate = null;
+    this.suppressNextClick = true;
+    this.hoverCursor = null;
+    this.config.onAnnotationDragLockChange?.(false);
+    this.updateCursor();
   }
 
   private releaseCreationPointer() {

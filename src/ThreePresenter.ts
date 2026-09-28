@@ -279,12 +279,22 @@ export class ThreePresenter {
         }
       },
       onAnnotationClick: (object, isMulti) => {
+        this.annotationManager.clearSelectedLineVertex();
         const id = this.annotationManager.getAnnotationIdFromMarker(object as THREE.Mesh);
         if (id) {
           if (isMulti) this.annotationManager.toggleSelection(id);
           else this.annotationManager.select([id], false);
         }
       },
+      onAnnotationVertexSelect: (object, vertexIndex) =>
+        this.annotationManager.selectLineVertexFromMarker(object, vertexIndex),
+      onAnnotationSegmentDoubleClick: (object, segmentIndex, point) =>
+        this.annotationManager.insertLineVertexFromMarker(
+          object,
+          segmentIndex,
+          [point.x, point.y, point.z],
+        ),
+      onAnnotationVertexDelete: () => this.annotationManager.deleteSelectedLineVertex(),
       onBackgroundClick: (isMulti) => {
         if (!isMulti) this.annotationManager.clearSelection();
       },
@@ -324,6 +334,9 @@ export class ThreePresenter {
       },
       onAnnotationDragEnd: () => {
         this.annotationManager.endAnnotationEdit();
+      },
+      onAnnotationDragCancel: () => {
+        this.annotationManager.cancelAnnotationEdit();
       },
     });
 

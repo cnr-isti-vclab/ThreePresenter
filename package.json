@@ -22,6 +22,7 @@
     "build:docs": "npm run build",
     "serve:docs": "http-server docs -p 8080",
     "deploy": "npm run build:docs && typedoc",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "smoke:assets": "node scripts/smoke-assets.js",
     "smoke": "npm run build && npm run smoke:assets"
   },

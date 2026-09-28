@@ -29,7 +29,7 @@
   <div id="ui">
     <button id="line" type="button">Draw line</button>
     <label><input id="editing" type="checkbox" checked> Edit vertices</label>
-    <div id="status">Draw a line, stop drawing, select it, then drag a white vertex handle to edit it.</div>
+    <div id="status">Select a line to edit it. Drag a handle to move it, press Escape to cancel a drag, click a handle and press Delete to remove it, or double-click a segment to insert a vertex.</div>
   </div>
 
   <script type="importmap">
@@ -61,7 +61,7 @@
     editingCheckbox.addEventListener('change', () => {
       presenter.setAnnotationEditingEnabled(editingCheckbox.checked);
       status.textContent = editingCheckbox.checked
-        ? 'Vertex editing enabled.'
+        ? 'Vertex editing enabled: drag, insert with double-click, or select and delete vertices.'
         : 'Inspection only: annotations remain selectable.';
     });
 
@@ -78,7 +78,7 @@
         geometry
       });
       presenter.getAnnotationManager().render(annotations);
-      status.textContent = `Created ${geometry.length} vertices. Stop drawing, select the line, then drag a handle.`;
+      status.textContent = `Created ${geometry.length} vertices. Stop drawing and select the line to move, insert, or delete vertices.`;
     };
 
     presenter.getAnnotationManager().onAnnotationUpdated((updated) => {

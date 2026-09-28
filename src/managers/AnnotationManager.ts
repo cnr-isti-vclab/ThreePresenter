@@ -79,6 +79,12 @@ interface LineDraft {
 interface ActiveAnnotationEdit {
   annotationId: string;
   vertexIndex?: number;
+  snapshot: Annotation;
+}
+
+interface SelectedLineVertex {
+  annotationId: string;
+  vertexIndex: number;
 }
 
 /**
@@ -94,6 +100,7 @@ export class AnnotationManager {
   private selectedIds: Set<string> = new Set();
   private editingEnabled = true;
   private activeEdit: ActiveAnnotationEdit | null = null;
+  private selectedLineVertex: SelectedLineVertex | null = null;
   private lineDraft: LineDraft | null = null;
   
   // Callbacks
@@ -118,6 +125,7 @@ export class AnnotationManager {
    */
   render(annotations: Annotation[]): void {
     this.annotations = new Map(annotations.map((annotation) => [annotation.id, this.cloneAnnotation(annotation)]));
+    this.validateSelectedLineVertex();
     // Remove markers that no longer exist
     const currentIds = new Set(annotations.map(a => a.id));
     for (const [id] of this.markers.entries()) {
@@ -158,6 +166,7 @@ export class AnnotationManager {
     }
     
     ids.forEach(id => this.selectedIds.add(id));
+    this.validateSelectedLineVertex();
     this.updateAllMarkerAppearances();
     this.notifySelectionChange();
     
@@ -177,6 +186,7 @@ export class AnnotationManager {
       console.log(`✅ AnnotationManager: Selected ${id}`);
     }
     
+    this.validateSelectedLineVertex();
     this.updateAllMarkerAppearances();
     this.notifySelectionChange();
   }
@@ -187,6 +197,7 @@ export class AnnotationManager {
   clearSelection(): void {
     if (this.selectedIds.size > 0) {
       this.selectedIds.clear();
+      this.selectedLineVertex = null;
       this.updateAllMarkerAppearances();
       this.notifySelectionChange();
       console.log('🗑️ AnnotationManager: Cleared selection');
@@ -229,12 +240,13 @@ export class AnnotationManager {
         if (!(child instanceof THREE.Sprite) || child.userData.annotationRole !== 'line-vertex-handle') {
           return;
         }
+        const activeScale = child.userData.annotationEditActive ? 1.35 : 1;
         const scale = this.getScreenSpaceScale(
           child,
           camera,
           canvasHeight,
           this.config.lineVertexSize,
-        ) * (2 * LINE_HANDLE_TEXTURE_SIZE) / (LINE_HANDLE_TEXTURE_RADIUS * 2 + 8);
+        ) * (2 * LINE_HANDLE_TEXTURE_SIZE) / (LINE_HANDLE_TEXTURE_RADIUS * 2 + 8) * activeScale;
         child.scale.setScalar(scale);
       });
     }
@@ -417,7 +429,10 @@ export class AnnotationManager {
       return;
     }
     if (!enabled && this.activeEdit) {
-      this.endAnnotationEdit();
+      this.cancelAnnotationEdit();
+    }
+    if (!enabled) {
+      this.selectedLineVertex = null;
     }
     this.editingEnabled = enabled;
     this.updateAllMarkerAppearances();
@@ -443,6 +458,7 @@ export class AnnotationManager {
     this.editStartCallbacks = [];
     this.updateCallbacks = [];
     this.activeEdit = null;
+    this.selectedLineVertex = null;
     
     console.log('🗑️ AnnotationManager: Disposed');
   }
@@ -497,7 +513,15 @@ export class AnnotationManager {
     this.activeEdit = {
       annotationId,
       vertexIndex: annotation.type === 'line' ? vertexIndex : undefined,
+      snapshot: this.cloneAnnotation(annotation),
     };
+    if (annotation.type === 'line' && vertexIndex !== undefined) {
+      this.selectedLineVertex = { annotationId, vertexIndex };
+    }
+    const markerRoot = this.markers.get(annotationId);
+    if (markerRoot) {
+      this.updateMarkerAppearance(markerRoot, true);
+    }
     this.notifyAnnotationEditStart(annotation);
     return true;
   }
@@ -532,11 +556,135 @@ export class AnnotationManager {
     if (!this.activeEdit) {
       return;
     }
-    const annotation = this.annotations.get(this.activeEdit.annotationId);
+    const annotationId = this.activeEdit.annotationId;
+    const annotation = this.annotations.get(annotationId);
     this.activeEdit = null;
+    const marker = this.markers.get(annotationId);
+    if (marker) {
+      this.updateMarkerAppearance(marker, this.selectedIds.has(annotationId));
+    }
     if (annotation) {
       this.notifyAnnotationUpdated(annotation);
     }
+  }
+
+  /** Restore the geometry captured when the active edit began. */
+  cancelAnnotationEdit(): boolean {
+    if (!this.activeEdit) {
+      return false;
+    }
+
+    const { annotationId, snapshot } = this.activeEdit;
+    const restored = this.cloneAnnotation(snapshot);
+    this.activeEdit = null;
+    this.annotations.set(annotationId, restored);
+
+    const marker = this.markers.get(annotationId);
+    if (marker) {
+      this.updateMarkerGeometry(marker, restored);
+      this.updateMarkerAppearance(marker, this.selectedIds.has(annotationId));
+    }
+    return true;
+  }
+
+  /** Select one editable line vertex for keyboard operations. */
+  selectLineVertexFromMarker(marker: THREE.Object3D, vertexIndex?: number): boolean {
+    if (!this.canEditAnnotationFromMarker(marker, vertexIndex) || vertexIndex === undefined) {
+      return false;
+    }
+    const annotationId = this.getAnnotationIdFromMarker(marker)!;
+    this.selectedLineVertex = { annotationId, vertexIndex };
+    const markerRoot = this.markers.get(annotationId);
+    if (markerRoot) {
+      this.updateMarkerAppearance(markerRoot, true);
+    }
+    return true;
+  }
+
+  /** Clear the vertex-level selection while preserving annotation selection. */
+  clearSelectedLineVertex(): void {
+    const annotationId = this.selectedLineVertex?.annotationId;
+    this.selectedLineVertex = null;
+    if (!this.activeEdit && annotationId) {
+      const marker = this.markers.get(annotationId);
+      if (marker) {
+        this.updateMarkerAppearance(marker, this.selectedIds.has(annotationId));
+      }
+    }
+  }
+
+  /** Insert a surface point immediately after the targeted line segment. */
+  insertLineVertexFromMarker(
+    marker: THREE.Object3D,
+    segmentIndex: number,
+    point: [number, number, number],
+  ): boolean {
+    if (!this.editingEnabled || this.activeEdit || !Number.isInteger(segmentIndex)) {
+      return false;
+    }
+    const annotationId = this.getAnnotationIdFromMarker(marker);
+    const annotation = annotationId ? this.annotations.get(annotationId) : undefined;
+    if (
+      !annotationId ||
+      annotation?.type !== 'line' ||
+      !this.selectedIds.has(annotationId) ||
+      this.selectedIds.size !== 1
+    ) {
+      return false;
+    }
+
+    const geometry = annotation.geometry as [number, number, number][];
+    if (segmentIndex < 0 || segmentIndex >= geometry.length - 1) {
+      return false;
+    }
+
+    this.notifyAnnotationEditStart(annotation);
+    const vertexIndex = segmentIndex + 1;
+    geometry.splice(vertexIndex, 0, [...point] as [number, number, number]);
+    this.selectedLineVertex = { annotationId, vertexIndex };
+    const markerRoot = this.markers.get(annotationId);
+    if (markerRoot) {
+      this.updateMarkerGeometry(markerRoot, annotation);
+      this.updateMarkerAppearance(markerRoot, true);
+    }
+    this.notifyAnnotationUpdated(annotation);
+    return true;
+  }
+
+  /** Delete the selected line vertex, but never reduce a line below two vertices. */
+  deleteSelectedLineVertex(): boolean {
+    if (!this.editingEnabled || this.activeEdit || !this.selectedLineVertex) {
+      return false;
+    }
+    const { annotationId, vertexIndex } = this.selectedLineVertex;
+    const annotation = this.annotations.get(annotationId);
+    if (annotation?.type !== 'line' || !this.selectedIds.has(annotationId)) {
+      this.clearSelectedLineVertex();
+      return false;
+    }
+
+    const geometry = annotation.geometry as [number, number, number][];
+    if (vertexIndex < 0 || vertexIndex >= geometry.length) {
+      this.clearSelectedLineVertex();
+      return false;
+    }
+    if (geometry.length <= 2) {
+      return true;
+    }
+
+    this.notifyAnnotationEditStart(annotation);
+    geometry.splice(vertexIndex, 1);
+    this.selectedLineVertex = {
+      annotationId,
+      vertexIndex: Math.min(vertexIndex, geometry.length - 1),
+    };
+    const marker = this.markers.get(annotationId);
+    if (marker) {
+      this.updateMarkerGeometry(marker, annotation);
+      this.updateMarkerAppearance(marker, true);
+    }
+    this.notifyAnnotationUpdated(annotation);
+    return true;
   }
 
   /**
@@ -707,6 +855,16 @@ export class AnnotationManager {
         child.material.linewidth = this.config.lineHitWidth;
       } else if (child instanceof THREE.Group && role === 'line-handles') {
         child.visible = this.editingEnabled && isSelected && this.selectedIds.size === 1;
+      } else if (child instanceof THREE.Sprite && role === 'line-vertex-handle') {
+        const activeEdit = this.activeEdit;
+        const selectedLineVertex = this.selectedLineVertex;
+        const isActive =
+          (activeEdit?.annotationId === marker.userData.annotationId &&
+            activeEdit?.vertexIndex === child.userData.annotationVertexIndex) ||
+          (selectedLineVertex?.annotationId === marker.userData.annotationId &&
+            selectedLineVertex?.vertexIndex === child.userData.annotationVertexIndex);
+        child.userData.annotationEditActive = isActive;
+        child.material.color.setHex(isActive ? this.config.selectedPointStrokeColor : 0xffffff);
       }
     });
   }
@@ -748,6 +906,26 @@ export class AnnotationManager {
       });
       this.markers.delete(id);
       this.annotations.delete(id);
+      if (this.selectedLineVertex?.annotationId === id) {
+        this.selectedLineVertex = null;
+      }
+    }
+  }
+
+  private validateSelectedLineVertex(): void {
+    if (!this.selectedLineVertex || this.selectedIds.size !== 1) {
+      this.selectedLineVertex = null;
+      return;
+    }
+    const { annotationId, vertexIndex } = this.selectedLineVertex;
+    const annotation = this.annotations.get(annotationId);
+    if (
+      !this.selectedIds.has(annotationId) ||
+      annotation?.type !== 'line' ||
+      vertexIndex < 0 ||
+      vertexIndex >= (annotation.geometry as [number, number, number][]).length
+    ) {
+      this.selectedLineVertex = null;
     }
   }
 
