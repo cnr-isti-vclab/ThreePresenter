@@ -66,8 +66,10 @@ export type {
 
 // Export annotation system
 export { AnnotationManager } from './managers/AnnotationManager';
+export type { LineDraftResult } from './managers/AnnotationManager';
 export type {
   AnnotationConfig,
+  AnnotationSurfacePath,
   AnnotationCreationMode,
   AnnotationCreationModeChangeCallback,
   AnnotationGeometryCreatedCallback,

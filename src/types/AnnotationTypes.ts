@@ -25,6 +25,12 @@ export type AnnotationGeometry =
   | [number, number, number]  // Point
   | [number, number, number][]; // Line or Area
 
+/** Sparse controls retained for a dense line projected onto the visible surface. */
+export interface AnnotationSurfacePath {
+  mode: 'view-projected';
+  controlVertices: [number, number, number][];
+}
+
 /**
  * Annotation data structure
  */
@@ -35,6 +41,8 @@ export interface Annotation {
   description?: string;
   type: AnnotationType;
   geometry: AnnotationGeometry;
+  /** Optional sparse controls for a dense surface-following line. */
+  surfacePath?: AnnotationSurfacePath;
   /**
    * Optional normal vector.
    * Mainly populated for IIIF point annotations when provided by the selector.
@@ -79,6 +87,16 @@ export interface AnnotationConfig {
   lineUnderlayWidth?: number;
   /** Color of the contrast stroke behind lines (hex) */
   lineUnderlayColor?: number;
+  /** Color used for line portions occluded by model geometry (hex) */
+  lineOccludedColor?: number;
+  /** Width of the dark contrast stroke behind occluded line portions, in screen pixels */
+  lineOccludedUnderlayWidth?: number;
+  /** Width of the occluded dashed stroke in screen pixels */
+  lineOccludedWidth?: number;
+  /** Opacity of the occluded dashed stroke (0-1) */
+  lineOccludedOpacity?: number;
+  /** Approximate number of dash cycles along an occluded line */
+  lineOccludedDashCount?: number;
   /** Invisible line width used for pointer selection, in screen pixels */
   lineHitWidth?: number;
   /** Screen-space size of vertices shown on a selected line */
@@ -101,6 +119,7 @@ export type PointPickedCallback = (point: [number, number, number]) => void;
 export type AnnotationGeometryCreatedCallback = (
   type: Exclude<AnnotationCreationMode, null>,
   geometry: AnnotationGeometry,
+  surfacePath?: AnnotationSurfacePath,
 ) => void;
 
 /**

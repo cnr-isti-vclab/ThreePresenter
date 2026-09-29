@@ -35,6 +35,7 @@ import type {
   SelectionChangeCallback,
   PointPickedCallback,
   AnnotationEditCallback,
+  AnnotationSurfacePath,
 } from '../types/AnnotationTypes';
 
 /**
@@ -56,8 +57,13 @@ const DEFAULT_CONFIG: Required<AnnotationConfig> = {
   lineWidth: 3,
   lineUnderlayWidth: 5,
   lineUnderlayColor: 0x202020,
+  lineOccludedColor: 0xffffff,
+  lineOccludedUnderlayWidth: 4,
+  lineOccludedWidth: 2,
+  lineOccludedOpacity: 1,
+  lineOccludedDashCount: 14,
   lineHitWidth: 12,
-  lineVertexSize: 12,
+  lineVertexSize: 10,
 };
 
 const POINT_TEXTURE_SIZE = 128;
@@ -67,7 +73,10 @@ const LINE_HANDLE_TEXTURE_RADIUS = 24;
 type ScreenSpaceLineMaterial = LineMaterial & { linewidth: number };
 
 interface LineDraft {
+  controlVertices: THREE.Vector3[];
   vertices: THREE.Vector3[];
+  surfacePath?: AnnotationSurfacePath;
+  surfaceFollow: boolean;
   previewPoint: THREE.Vector3 | null;
   group: THREE.Group;
   committedUnderlay: Line2;
@@ -75,6 +84,15 @@ interface LineDraft {
   previewLine: Line2;
   handles: THREE.Points;
 }
+
+export interface LineDraftResult {
+  geometry: [number, number, number][];
+  surfacePath?: AnnotationSurfacePath;
+}
+
+type SurfacePathProjector = (
+  controlVertices: [number, number, number][],
+) => [number, number, number][];
 
 interface ActiveAnnotationEdit {
   annotationId: string;
@@ -102,6 +120,8 @@ export class AnnotationManager {
   private activeEdit: ActiveAnnotationEdit | null = null;
   private selectedLineVertex: SelectedLineVertex | null = null;
   private lineDraft: LineDraft | null = null;
+  private lineSurfaceFollowEnabled = false;
+  private surfacePathProjector: SurfacePathProjector | null = null;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -117,6 +137,20 @@ export class AnnotationManager {
   constructor(scene: THREE.Scene, config: AnnotationConfig = {}) {
     this.scene = scene;
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /** Configure the presenter-owned projection used by surface-following lines. */
+  setSurfacePathProjector(projector: SurfacePathProjector | null): void {
+    this.surfacePathProjector = projector;
+  }
+
+  /** Enable view-projected path generation for subsequently started line drafts. */
+  setLineSurfaceFollowEnabled(enabled: boolean): void {
+    this.lineSurfaceFollowEnabled = enabled;
+  }
+
+  getLineSurfaceFollowEnabled(): boolean {
+    return this.lineSurfaceFollowEnabled;
   }
 
   /**
@@ -246,7 +280,7 @@ export class AnnotationManager {
           camera,
           canvasHeight,
           this.config.lineVertexSize,
-        ) * (2 * LINE_HANDLE_TEXTURE_SIZE) / (LINE_HANDLE_TEXTURE_RADIUS * 2 + 8) * activeScale;
+        ) * LINE_HANDLE_TEXTURE_SIZE / (LINE_HANDLE_TEXTURE_RADIUS * 2 + 8) * activeScale;
         child.scale.setScalar(scale);
       });
     }
@@ -356,14 +390,15 @@ export class AnnotationManager {
     }
   }
 
-  /** Add a committed surface vertex to the active line draft. */
+  /** Add a sparse control vertex to the active line draft. */
   addLineDraftVertex(point: [number, number, number]): void {
     if (!this.lineDraft) {
       this.lineDraft = this.createLineDraft();
       this.scene.add(this.lineDraft.group);
     }
 
-    this.lineDraft.vertices.push(new THREE.Vector3(point[0], point[1], point[2]));
+    this.lineDraft.controlVertices.push(new THREE.Vector3(point[0], point[1], point[2]));
+    this.rebuildLineDraftPath(this.lineDraft);
     this.lineDraft.previewPoint = null;
     this.updateLineDraftGeometry();
   }
@@ -383,9 +418,9 @@ export class AnnotationManager {
     return this.lineDraft !== null;
   }
 
-  /** Commit a valid line draft, or discard it when fewer than two vertices exist. */
-  finalizeLineDraft(): [number, number, number][] | null {
-    if (!this.lineDraft || this.lineDraft.vertices.length < 2) {
+  /** Commit a valid line draft, or discard it when fewer than two control vertices exist. */
+  finalizeLineDraft(): LineDraftResult | null {
+    if (!this.lineDraft || this.lineDraft.controlVertices.length < 2) {
       this.cancelLineDraft();
       return null;
     }
@@ -393,8 +428,11 @@ export class AnnotationManager {
     const geometry = this.lineDraft.vertices.map(
       (point) => [point.x, point.y, point.z] as [number, number, number],
     );
+    const surfacePath = this.lineDraft.surfacePath
+      ? this.cloneSurfacePath(this.lineDraft.surfacePath)
+      : undefined;
     this.cancelLineDraft();
-    return geometry;
+    return { geometry, surfacePath };
   }
 
   /** Remove the current transient line without emitting a persisted annotation. */
@@ -499,7 +537,7 @@ export class AnnotationManager {
       marker.userData.annotationRole === 'line-vertex-handle' &&
       Number.isInteger(vertexIndex) &&
       vertexIndex! >= 0 &&
-      vertexIndex! < (annotation.geometry as [number, number, number][]).length,
+      vertexIndex! < this.getLineControlVertices(annotation).length,
     );
   }
 
@@ -539,8 +577,9 @@ export class AnnotationManager {
     if (annotation.type === 'point') {
       annotation.geometry = [...point] as [number, number, number];
     } else if (annotation.type === 'line' && this.activeEdit.vertexIndex !== undefined) {
-      const geometry = annotation.geometry as [number, number, number][];
-      geometry[this.activeEdit.vertexIndex] = [...point] as [number, number, number];
+      const controlVertices = this.getLineControlVertices(annotation);
+      controlVertices[this.activeEdit.vertexIndex] = [...point] as [number, number, number];
+      this.regenerateSurfacePath(annotation);
     } else {
       return;
     }
@@ -633,14 +672,16 @@ export class AnnotationManager {
       return false;
     }
 
-    const geometry = annotation.geometry as [number, number, number][];
-    if (segmentIndex < 0 || segmentIndex >= geometry.length - 1) {
+    const renderVertices = annotation.geometry as [number, number, number][];
+    if (segmentIndex < 0 || segmentIndex >= renderVertices.length - 1) {
       return false;
     }
 
     this.notifyAnnotationEditStart(annotation);
-    const vertexIndex = segmentIndex + 1;
-    geometry.splice(vertexIndex, 0, [...point] as [number, number, number]);
+    const vertexIndex = this.controlInsertionIndex(annotation, segmentIndex);
+    const controlVertices = this.getLineControlVertices(annotation);
+    controlVertices.splice(vertexIndex, 0, [...point] as [number, number, number]);
+    this.regenerateSurfacePath(annotation);
     this.selectedLineVertex = { annotationId, vertexIndex };
     const markerRoot = this.markers.get(annotationId);
     if (markerRoot) {
@@ -663,20 +704,21 @@ export class AnnotationManager {
       return false;
     }
 
-    const geometry = annotation.geometry as [number, number, number][];
-    if (vertexIndex < 0 || vertexIndex >= geometry.length) {
+    const controlVertices = this.getLineControlVertices(annotation);
+    if (vertexIndex < 0 || vertexIndex >= controlVertices.length) {
       this.clearSelectedLineVertex();
       return false;
     }
-    if (geometry.length <= 2) {
+    if (controlVertices.length <= 2) {
       return true;
     }
 
     this.notifyAnnotationEditStart(annotation);
-    geometry.splice(vertexIndex, 1);
+    controlVertices.splice(vertexIndex, 1);
+    this.regenerateSurfacePath(annotation);
     this.selectedLineVertex = {
       annotationId,
-      vertexIndex: Math.min(vertexIndex, geometry.length - 1),
+      vertexIndex: Math.min(vertexIndex, controlVertices.length - 1),
     };
     const marker = this.markers.get(annotationId);
     if (marker) {
@@ -764,13 +806,18 @@ export class AnnotationManager {
     isSelected: boolean,
     closed: boolean
   ): THREE.Group {
-    const vertices = this.toVertexVectors(annotation.geometry);
-    const points = closed && vertices.length > 2
-      ? [...vertices, vertices[0].clone()]
-      : vertices;
+    const renderVertices = this.toVertexVectors(annotation.geometry);
+    const controlVertices = this.getLineControlVectors(annotation);
+    const points = closed && renderVertices.length > 2
+      ? [...renderVertices, renderVertices[0].clone()]
+      : renderVertices;
     const group = new THREE.Group();
     group.userData.annotationId = annotation.id;
     group.userData.annotationType = annotation.type;
+    group.userData.annotationControlVertexIndices = this.findControlVertexIndices(
+      renderVertices,
+      controlVertices,
+    );
 
     const underlay = this.createScreenSpaceLine(
       points,
@@ -779,6 +826,22 @@ export class AnnotationManager {
       0.9,
       'line-underlay',
     );
+    const occludedUnderlay = this.createScreenSpaceLine(
+      points,
+      this.config.lineUnderlayColor,
+      this.config.lineOccludedUnderlayWidth,
+      0.95,
+      'line-occluded-underlay',
+    );
+    this.configureOccludedLine(occludedUnderlay);
+    const occludedLine = this.createScreenSpaceLine(
+      points,
+      isSelected ? this.config.selectedColor : this.config.lineOccludedColor,
+      this.config.lineOccludedWidth,
+      this.config.lineOccludedOpacity,
+      'line-occluded',
+    );
+    this.configureOccludedLine(occludedLine);
     const visibleLine = this.createScreenSpaceLine(
       points,
       isSelected ? this.config.selectedColor : this.config.color,
@@ -794,10 +857,10 @@ export class AnnotationManager {
       'line-hit',
       false,
     );
-    const handles = this.createEditableLineHandles(vertices);
+    const handles = this.createEditableLineHandles(controlVertices);
     handles.visible = isSelected && this.selectedIds.size === 1;
 
-    group.add(underlay, visibleLine, hitLine, handles);
+    group.add(occludedUnderlay, occludedLine, underlay, visibleLine, hitLine, handles);
     return group;
   }
 
@@ -816,16 +879,21 @@ export class AnnotationManager {
       return;
     }
 
-    const vertices = this.toVertexVectors(annotation.geometry);
-    const points = annotation.type === 'area' && vertices.length > 2
-      ? [...vertices, vertices[0].clone()]
-      : vertices;
+    const renderVertices = this.toVertexVectors(annotation.geometry);
+    const controlVertices = this.getLineControlVectors(annotation);
+    const points = annotation.type === 'area' && renderVertices.length > 2
+      ? [...renderVertices, renderVertices[0].clone()]
+      : renderVertices;
+    marker.userData.annotationControlVertexIndices = this.findControlVertexIndices(
+      renderVertices,
+      controlVertices,
+    );
     marker.traverse((child) => {
       const role = child.userData.annotationRole as string | undefined;
       if (child instanceof Line2 && role?.startsWith('line-')) {
         this.replaceLineGeometry(child, points);
       } else if (child instanceof THREE.Group && role === 'line-handles') {
-        this.syncEditableLineHandles(child, vertices);
+        this.syncEditableLineHandles(child, controlVertices);
       }
     });
   }
@@ -851,6 +919,18 @@ export class AnnotationManager {
       } else if (child instanceof Line2 && role === 'line-underlay') {
         child.material.color.setHex(this.config.lineUnderlayColor);
         child.material.linewidth = this.config.lineUnderlayWidth;
+      } else if (child instanceof Line2 && role === 'line-occluded-underlay') {
+        child.material.color.setHex(this.config.lineUnderlayColor);
+        child.material.opacity = 0.95;
+        child.material.linewidth = this.config.lineOccludedUnderlayWidth;
+        this.updateOccludedLineDashPattern(child);
+      } else if (child instanceof Line2 && role === 'line-occluded') {
+        child.material.color.setHex(
+          isSelected ? this.config.selectedColor : this.config.lineOccludedColor,
+        );
+        child.material.opacity = this.config.lineOccludedOpacity;
+        child.material.linewidth = this.config.lineOccludedWidth;
+        this.updateOccludedLineDashPattern(child);
       } else if (child instanceof Line2 && role === 'line-hit') {
         child.material.linewidth = this.config.lineHitWidth;
       } else if (child instanceof THREE.Group && role === 'line-handles') {
@@ -992,8 +1072,37 @@ export class AnnotationManager {
 
     const line = new Line2(geometry, material);
     line.userData.annotationRole = role;
-    line.renderOrder = role === 'line-underlay' ? 10 : 11;
+    line.renderOrder = role === 'line-occluded-underlay'
+      ? 9
+      : role === 'line-occluded'
+        ? 10
+        : role === 'line-underlay'
+          ? 11
+          : role === 'line-visible'
+            ? 12
+            : 13;
     return line;
+  }
+
+  private configureOccludedLine(line: Line2): void {
+    line.material.depthFunc = THREE.GreaterDepth;
+    line.material.polygonOffset = false;
+    line.material.dashed = true;
+    line.material.dashSize = 0.6;
+    line.material.gapSize = 1.4;
+    line.material.needsUpdate = true;
+    this.updateOccludedLineDashPattern(line);
+  }
+
+  private updateOccludedLineDashPattern(line: Line2): void {
+    line.computeLineDistances();
+    const distanceEnd = line.geometry.getAttribute('instanceDistanceEnd');
+    const totalLength = distanceEnd?.count
+      ? distanceEnd.getX(distanceEnd.count - 1)
+      : 0;
+    line.material.dashScale = totalLength > 0
+      ? (this.config.lineOccludedDashCount * 2) / totalLength
+      : 1;
   }
 
   private createLineGeometry(points: THREE.Vector3[]): LineGeometry {
@@ -1008,6 +1117,9 @@ export class AnnotationManager {
     const oldGeometry = line.geometry;
     line.geometry = this.createLineGeometry(points);
     oldGeometry.dispose();
+    if ((line.userData.annotationRole as string | undefined)?.startsWith('line-occluded')) {
+      this.updateOccludedLineDashPattern(line);
+    }
   }
 
   private createEditableLineHandles(points: THREE.Vector3[]): THREE.Group {
@@ -1104,7 +1216,9 @@ export class AnnotationManager {
 
     group.add(committedUnderlay, committedLine, previewLine, handles);
     return {
+      controlVertices: [],
       vertices: [],
+      surfaceFollow: this.lineSurfaceFollowEnabled,
       previewPoint: null,
       group,
       committedUnderlay,
@@ -1122,9 +1236,9 @@ export class AnnotationManager {
 
     this.replaceLineGeometry(draft.committedUnderlay, draft.vertices);
     this.replaceLineGeometry(draft.committedLine, draft.vertices);
-    this.replacePointsGeometry(draft.handles, draft.vertices);
+    this.replacePointsGeometry(draft.handles, draft.controlVertices);
 
-    const lastVertex = draft.vertices[draft.vertices.length - 1];
+    const lastVertex = draft.controlVertices[draft.controlVertices.length - 1];
     if (lastVertex && draft.previewPoint) {
       this.replaceLineGeometry(draft.previewLine, [lastVertex, draft.previewPoint]);
       draft.previewLine.computeLineDistances();
@@ -1208,8 +1322,93 @@ export class AnnotationManager {
       geometry: Array.isArray(annotation.geometry[0])
         ? (annotation.geometry as [number, number, number][]).map((point) => [...point] as [number, number, number])
         : ([...(annotation.geometry as [number, number, number])] as [number, number, number]),
+      surfacePath: annotation.surfacePath ? this.cloneSurfacePath(annotation.surfacePath) : undefined,
       normal: annotation.normal ? [...annotation.normal] as [number, number, number] : undefined,
     };
+  }
+
+  private cloneSurfacePath(surfacePath: AnnotationSurfacePath): AnnotationSurfacePath {
+    return {
+      mode: surfacePath.mode,
+      controlVertices: surfacePath.controlVertices.map(
+        (point) => [...point] as [number, number, number],
+      ),
+    };
+  }
+
+  private getLineControlVertices(annotation: Annotation): [number, number, number][] {
+    if (annotation.type === 'line' && annotation.surfacePath?.mode === 'view-projected') {
+      return annotation.surfacePath.controlVertices;
+    }
+    return annotation.geometry as [number, number, number][];
+  }
+
+  private getLineControlVectors(annotation: Annotation): THREE.Vector3[] {
+    return this.getLineControlVertices(annotation)
+      .map((point) => new THREE.Vector3(point[0], point[1], point[2]));
+  }
+
+  private rebuildLineDraftPath(draft: LineDraft): void {
+    const controlVertices = draft.controlVertices.map(
+      (point) => [point.x, point.y, point.z] as [number, number, number],
+    );
+    const projectedVertices = draft.surfaceFollow && controlVertices.length >= 2
+      ? this.surfacePathProjector?.(controlVertices)
+      : null;
+
+    draft.vertices = (projectedVertices && projectedVertices.length >= 2
+      ? projectedVertices
+      : controlVertices
+    ).map((point) => new THREE.Vector3(point[0], point[1], point[2]));
+    draft.surfacePath = projectedVertices && projectedVertices.length >= 2
+      ? { mode: 'view-projected', controlVertices }
+      : undefined;
+  }
+
+  private regenerateSurfacePath(annotation: Annotation): void {
+    if (annotation.type !== 'line' || annotation.surfacePath?.mode !== 'view-projected') {
+      return;
+    }
+    const controlVertices = annotation.surfacePath.controlVertices;
+    const projectedVertices = this.surfacePathProjector?.(controlVertices);
+    annotation.geometry = (projectedVertices && projectedVertices.length >= 2
+      ? projectedVertices
+      : controlVertices
+    ).map((point) => [...point] as [number, number, number]);
+  }
+
+  private findControlVertexIndices(
+    renderVertices: THREE.Vector3[],
+    controlVertices: THREE.Vector3[],
+  ): number[] {
+    const indices: number[] = [];
+    let startIndex = 0;
+    for (const controlVertex of controlVertices) {
+      let index = renderVertices.findIndex(
+        (vertex, candidateIndex) =>
+          candidateIndex >= startIndex && vertex.distanceToSquared(controlVertex) < 1e-16,
+      );
+      if (index === -1) {
+        index = Math.min(startIndex, Math.max(0, renderVertices.length - 1));
+      }
+      indices.push(index);
+      startIndex = index;
+    }
+    return indices;
+  }
+
+  private controlInsertionIndex(annotation: Annotation, renderSegmentIndex: number): number {
+    const marker = this.markers.get(annotation.id);
+    const indices = marker?.userData.annotationControlVertexIndices as number[] | undefined;
+    if (!indices || indices.length < 2) {
+      return renderSegmentIndex + 1;
+    }
+    for (let controlIndex = 0; controlIndex < indices.length - 1; controlIndex += 1) {
+      if (renderSegmentIndex < indices[controlIndex + 1]) {
+        return controlIndex + 1;
+      }
+    }
+    return indices.length - 1;
   }
 
   private applyPointVisualOffset(

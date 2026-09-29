@@ -29,7 +29,8 @@
   <div id="ui">
     <button id="line" type="button">Draw line</button>
     <label><input id="editing" type="checkbox" checked> Edit vertices</label>
-    <div id="status">Select a line to edit it. Drag a handle to move it, press Escape to cancel a drag, click a handle and press Delete to remove it, or double-click a segment to insert a vertex.</div>
+    <label><input id="surface-follow" type="checkbox"> Surface follow</label>
+    <div id="status">Select a line to edit it. Surface follow creates dense samples along the visible model surface while retaining sparse editable controls.</div>
   </div>
 
   <script type="importmap">
@@ -51,6 +52,7 @@
     const annotations = [];
     const lineButton = document.getElementById('line');
     const editingCheckbox = document.getElementById('editing');
+    const surfaceFollowCheckbox = document.getElementById('surface-follow');
     const status = document.getElementById('status');
 
     lineButton.addEventListener('click', () => {
@@ -63,6 +65,13 @@
       status.textContent = editingCheckbox.checked
         ? 'Vertex editing enabled: drag, insert with double-click, or select and delete vertices.'
         : 'Inspection only: annotations remain selectable.';
+    });
+
+    surfaceFollowCheckbox.addEventListener('change', () => {
+      presenter.setLineSurfaceFollowEnabled(surfaceFollowCheckbox.checked);
+      status.textContent = surfaceFollowCheckbox.checked
+        ? 'Surface follow enabled: new line segments are projected onto the visible model surface.'
+        : 'Surface follow disabled: new line segments are straight 3D chords.';
     });
 
     presenter.onAnnotationCreationModeChange = (mode) => {

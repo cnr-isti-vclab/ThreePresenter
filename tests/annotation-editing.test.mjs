@@ -95,6 +95,98 @@ test('editing mode gates line handles and drag entry', () => {
   manager.dispose();
 });
 
+test('selected line handles use the configured screen-space diameter', () => {
+  const manager = createSelectedLineManager();
+  const handle = findLineHandle(manager, 1);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.set(0, 0, 10);
+  camera.updateMatrixWorld();
+
+  manager.updateMarkerScales(camera, 1000);
+
+  const handleWorldPosition = handle.getWorldPosition(new THREE.Vector3());
+  const worldUnitsPerPixel = camera.position.distanceTo(handleWorldPosition)
+    * Math.tan(20 * Math.PI / 180) * 2 / 1000;
+  const visibleDiameter = (24 * 2 + 8) / 64;
+  const renderedDiameter = (handle.scale.x / worldUnitsPerPixel) * visibleDiameter;
+  assert.ok(Math.abs(renderedDiameter - manager.getConfig().lineVertexSize) < 0.001);
+  manager.dispose();
+});
+
+test('surface-following lines retain sparse controls and regenerate dense vertices', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setSurfacePathProjector((controls) => {
+    const vertices = [[...controls[0]]];
+    for (let index = 1; index < controls.length; index += 1) {
+      const start = controls[index - 1];
+      const end = controls[index];
+      vertices.push([
+        (start[0] + end[0]) / 2,
+        (start[1] + end[1]) / 2,
+        (start[2] + end[2]) / 2 + 1,
+      ]);
+      vertices.push([...end]);
+    }
+    return vertices;
+  });
+  manager.setLineSurfaceFollowEnabled(true);
+  manager.addLineDraftVertex([0, 0, 0]);
+  manager.addLineDraftVertex([4, 0, 0]);
+  const draft = manager.finalizeLineDraft();
+
+  assert.deepEqual(draft?.geometry, [[0, 0, 0], [2, 0, 1], [4, 0, 0]]);
+  assert.deepEqual(draft?.surfacePath?.controlVertices, [[0, 0, 0], [4, 0, 0]]);
+
+  manager.render([{
+    id: 'line-1',
+    label: 'Surface line',
+    type: 'line',
+    geometry: draft.geometry,
+    surfacePath: draft.surfacePath,
+  }]);
+  manager.select(['line-1']);
+  const handles = findHandleGroup(manager);
+  assert.equal(handles.children.length, 2);
+
+  const updates = [];
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+  const endHandle = findLineHandle(manager, 1);
+  assert.equal(manager.beginAnnotationEditFromMarker(endHandle, 1), true);
+  manager.moveActiveAnnotation([6, 0, 0]);
+  manager.endAnnotationEdit();
+  assert.deepEqual(updates.at(-1).surfacePath.controlVertices, [[0, 0, 0], [6, 0, 0]]);
+  assert.deepEqual(updates.at(-1).geometry, [[0, 0, 0], [3, 0, 1], [6, 0, 0]]);
+
+  const hitLine = findLineRole(manager, 'line-hit');
+  assert.equal(manager.insertLineVertexFromMarker(hitLine, 1, [3, 0, 0]), true);
+  assert.deepEqual(updates.at(-1).surfacePath.controlVertices, [[0, 0, 0], [3, 0, 0], [6, 0, 0]]);
+  assert.equal(manager.deleteSelectedLineVertex(), true);
+  assert.deepEqual(updates.at(-1).surfacePath.controlVertices, [[0, 0, 0], [6, 0, 0]]);
+  manager.dispose();
+});
+
+test('occluded line has a contrasting dashed pass restricted to greater depth', () => {
+  const manager = createSelectedLineManager();
+  const occludedUnderlay = findLineRole(manager, 'line-occluded-underlay');
+  const occludedLine = findLineRole(manager, 'line-occluded');
+  const visibleLine = findLineRole(manager, 'line-visible');
+  const config = manager.getConfig();
+
+  for (const line of [occludedUnderlay, occludedLine]) {
+    assert.equal(line.material.depthFunc, THREE.GreaterDepth);
+    assert.equal(line.material.depthWrite, false);
+    assert.equal(line.material.dashed, true);
+    assert.ok(line.material.dashScale > 0);
+    assert.ok(line.geometry.getAttribute('instanceDistanceEnd'));
+  }
+  assert.equal(occludedUnderlay.material.linewidth, config.lineOccludedUnderlayWidth);
+  assert.equal(occludedLine.material.linewidth, config.lineOccludedWidth);
+  assert.equal(occludedLine.material.opacity, config.lineOccludedOpacity);
+  assert.ok(occludedLine.renderOrder < visibleLine.renderOrder);
+  assert.ok(occludedUnderlay.renderOrder < occludedLine.renderOrder);
+  manager.dispose();
+});
+
 test('cancel restores the edit-start geometry without publishing an update', () => {
   const manager = createSelectedLineManager();
   const handle = findLineHandle(manager, 1);

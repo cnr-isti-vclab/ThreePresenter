@@ -107,6 +107,7 @@ export class ThreePresenter {
   scaleIndicator: ScaleIndicator | null = null;
   viewportGizmo: any = null;
   private annotationCreationMode: AnnotationCreationMode = null;
+  private surfacePathRaycaster = new THREE.Raycaster();
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
   onAnnotationGeometryCreated: AnnotationGeometryCreatedCallback | null = null;
@@ -235,6 +236,9 @@ export class ThreePresenter {
       selectedColor: 0x1e3a8a,
       markerSize: 10
     });
+    this.annotationManager.setSurfacePathProjector((controlVertices) =>
+      this.projectLineOntoVisibleSurface(controlVertices),
+    );
     this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
       unit: 'units',
       precision: 3,
@@ -310,9 +314,9 @@ export class ThreePresenter {
         if (this.annotationCreationMode !== 'line') {
           return;
         }
-        const geometry = this.annotationManager.finalizeLineDraft();
-        if (geometry) {
-          this.onAnnotationGeometryCreated?.('line', geometry);
+        const draft = this.annotationManager.finalizeLineDraft();
+        if (draft) {
+          this.onAnnotationGeometryCreated?.('line', draft.geometry, draft.surfacePath);
         }
       },
       onAnnotationCreationCancel: () => {
@@ -467,6 +471,83 @@ export class ThreePresenter {
 
   getAnnotationCreationMode(): AnnotationCreationMode {
     return this.annotationCreationMode;
+  }
+
+  /** Enable dense line paths sampled along the visible model surface. */
+  setLineSurfaceFollowEnabled(enabled: boolean): void {
+    this.annotationManager.setLineSurfaceFollowEnabled(enabled);
+  }
+
+  getLineSurfaceFollowEnabled(): boolean {
+    return this.annotationManager.getLineSurfaceFollowEnabled();
+  }
+
+  /**
+   * Sample each control segment through the active camera and raycast the
+   * front-most model surface. Controls themselves remain exact endpoints.
+   */
+  private projectLineOntoVisibleSurface(
+    controlVertices: [number, number, number][],
+  ): [number, number, number][] {
+    if (controlVertices.length < 2) {
+      return controlVertices.map((point) => [...point] as [number, number, number]);
+    }
+
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld();
+    const meshes: THREE.Mesh[] = [];
+    Object.values(this.models).forEach((model) => {
+      model.traverseVisible((child) => {
+        if (child instanceof THREE.Mesh) {
+          meshes.push(child);
+        }
+      });
+    });
+    if (meshes.length === 0) {
+      return controlVertices.map((point) => [...point] as [number, number, number]);
+    }
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const viewportWidth = rect.width || this.renderer.domElement.width || 1;
+    const viewportHeight = rect.height || this.renderer.domElement.height || 1;
+    const result: THREE.Vector3[] = [];
+    const append = (point: THREE.Vector3) => {
+      if (result.length === 0 || result[result.length - 1].distanceToSquared(point) > 1e-16) {
+        result.push(point.clone());
+      }
+    };
+
+    for (let segmentIndex = 0; segmentIndex < controlVertices.length - 1; segmentIndex += 1) {
+      const start = new THREE.Vector3(...controlVertices[segmentIndex]);
+      const end = new THREE.Vector3(...controlVertices[segmentIndex + 1]);
+      const startNdc = start.clone().project(this.camera);
+      const endNdc = end.clone().project(this.camera);
+      const screenDistance = Math.hypot(
+        (endNdc.x - startNdc.x) * viewportWidth / 2,
+        (endNdc.y - startNdc.y) * viewportHeight / 2,
+      );
+      const sampleCount = Math.max(1, Math.min(256, Math.ceil(screenDistance / 8)));
+      append(start);
+
+      for (let sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex += 1) {
+        const t = sampleIndex / sampleCount;
+        if (sampleIndex === sampleCount) {
+          append(end);
+          continue;
+        }
+        const ndc = new THREE.Vector2(
+          THREE.MathUtils.lerp(startNdc.x, endNdc.x, t),
+          THREE.MathUtils.lerp(startNdc.y, endNdc.y, t),
+        );
+        this.surfacePathRaycaster.setFromCamera(ndc, this.camera);
+        const hit = this.surfacePathRaycaster.intersectObjects(meshes, false)[0];
+        // Silhouettes and mesh holes may not provide a surface hit. Keep a
+        // fallback sample so the annotation remains one continuous polyline.
+        append(hit?.point ?? start.clone().lerp(end, t));
+      }
+    }
+
+    return result.map((point) => [point.x, point.y, point.z]);
   }
 
   /** Allow geometry dragging while preserving annotation visibility and selection. */
