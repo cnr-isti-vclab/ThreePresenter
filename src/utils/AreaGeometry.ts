@@ -47,14 +47,20 @@ export function createProjectedAreaGeometry(
   return geometry;
 }
 
+export interface ClipDepthRange {
+  nearNdc: number;
+  farNdc: number;
+}
+
 /**
  * Create a view-extruded volume whose projection is the supplied boundary.
- * The near/far planes intentionally use the active camera range in this
- * client-side prototype; full-resolution depth bounds come later.
+ * The near/far planes use the active camera range unless a model-derived NDC
+ * depth range is supplied by the presenter.
  */
 export function createProjectedClipVolumeGeometry(
   vertices: readonly THREE.Vector3[],
   camera: THREE.Camera,
+  depthRange?: ClipDepthRange | null,
 ): THREE.BufferGeometry | null {
   const projected = vertices.map((vertex) => vertex.clone().project(camera));
   const indices = triangulateProjectedBoundary(
@@ -68,11 +74,17 @@ export function createProjectedClipVolumeGeometry(
     return null;
   }
 
+  const nearNdc = THREE.MathUtils.clamp(depthRange?.nearNdc ?? -1, -1, 1);
+  const farNdc = THREE.MathUtils.clamp(depthRange?.farNdc ?? 1, -1, 1);
+  if (nearNdc >= farNdc) {
+    return null;
+  }
+
   const nearVertices = projected.map((point) =>
-    new THREE.Vector3(point.x, point.y, -1).unproject(camera),
+    new THREE.Vector3(point.x, point.y, nearNdc).unproject(camera),
   );
   const farVertices = projected.map((point) =>
-    new THREE.Vector3(point.x, point.y, 1).unproject(camera),
+    new THREE.Vector3(point.x, point.y, farNdc).unproject(camera),
   );
   const positions = [...nearVertices, ...farVertices].flatMap((vertex) => [
     vertex.x,

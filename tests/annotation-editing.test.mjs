@@ -64,6 +64,27 @@ test('area clipping prototype extrudes the projected boundary through the camera
   geometry.dispose();
 });
 
+test('area clipping prototype accepts model-derived NDC depth bounds', () => {
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.z = 5;
+  camera.updateMatrixWorld();
+  const vertices = [
+    new THREE.Vector3(-1, -1, 0),
+    new THREE.Vector3(1, -1, 0),
+    new THREE.Vector3(1, 1, 0),
+    new THREE.Vector3(-1, 1, 0),
+  ];
+  const geometry = createProjectedClipVolumeGeometry(vertices, camera, {
+    nearNdc: 0.2,
+    farNdc: 0.4,
+  });
+  assert.ok(geometry);
+  const positions = geometry.getAttribute('position');
+  assert.ok(Math.abs(new THREE.Vector3().fromBufferAttribute(positions, 0).project(camera).z - 0.2) < 1e-5);
+  assert.ok(Math.abs(new THREE.Vector3().fromBufferAttribute(positions, 4).project(camera).z - 0.4) < 1e-5);
+  geometry.dispose();
+});
+
 test('area prototype fill is added and updated separately from its outline', () => {
   const manager = new AnnotationManager(new THREE.Scene());
   manager.setAreaFillProjector((vertices) => createProjectedAreaGeometry(vertices, (vertex) => vertex));

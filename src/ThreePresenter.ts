@@ -9,6 +9,7 @@ import { ScaleIndicator } from './utils/ScaleIndicator';
 import {
   createProjectedAreaGeometry,
   createProjectedClipVolumeGeometry,
+  type ClipDepthRange,
 } from './utils/AreaGeometry';
 
 import { CameraManager } from './managers/CameraManager';
@@ -112,6 +113,8 @@ export class ThreePresenter {
   viewportGizmo: any = null;
   private annotationCreationMode: AnnotationCreationMode = null;
   private surfacePathRaycaster = new THREE.Raycaster();
+  private areaDepthRaycaster = new THREE.Raycaster();
+  private areaClipCameraSignature = '';
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
   onAnnotationGeometryCreated: AnnotationGeometryCreatedCallback | null = null;
@@ -248,7 +251,7 @@ export class ThreePresenter {
       createProjectedAreaGeometry(vertices, (vertex) => vertex.clone().project(this.camera)),
     );
     this.annotationManager.setAreaClipVolumeProjector((vertices) =>
-      createProjectedClipVolumeGeometry(vertices, this.camera),
+      createProjectedClipVolumeGeometry(vertices, this.camera, this.getAreaDepthRange(vertices)),
     );
     this.annotationManager.setAreaClipVolumeEnabled(true);
     this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
@@ -507,14 +510,7 @@ export class ThreePresenter {
 
     this.scene.updateMatrixWorld(true);
     this.camera.updateMatrixWorld();
-    const meshes: THREE.Mesh[] = [];
-    Object.values(this.models).forEach((model) => {
-      model.traverseVisible((child) => {
-        if (child instanceof THREE.Mesh) {
-          meshes.push(child);
-        }
-      });
-    });
+    const meshes = this.getVisibleModelMeshes();
     if (meshes.length === 0) {
       return controlVertices.map((point) => [...point] as [number, number, number]);
     }
@@ -560,6 +556,99 @@ export class ThreePresenter {
     }
 
     return result.map((point) => [point.x, point.y, point.z]);
+  }
+
+  private getVisibleModelMeshes(): THREE.Mesh[] {
+    this.scene.updateMatrixWorld(true);
+    const meshes: THREE.Mesh[] = [];
+    Object.values(this.models).forEach((model) => {
+      model.traverseVisible((child) => {
+        if (child instanceof THREE.Mesh) {
+          meshes.push(child);
+        }
+      });
+    });
+    return meshes;
+  }
+
+  private getAreaDepthRange(vertices: THREE.Vector3[]): ClipDepthRange | null {
+    const meshes = this.getVisibleModelMeshes();
+    if (meshes.length === 0) {
+      return null;
+    }
+
+    this.camera.updateMatrixWorld();
+    const projected = vertices.map((vertex) => vertex.clone().project(this.camera));
+    if (projected.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+      return null;
+    }
+
+    const polygon = projected.map((point) => new THREE.Vector2(point.x, point.y));
+    const minX = Math.max(-1, Math.min(...polygon.map((point) => point.x)));
+    const maxX = Math.min(1, Math.max(...polygon.map((point) => point.x)));
+    const minY = Math.max(-1, Math.min(...polygon.map((point) => point.y)));
+    const maxY = Math.min(1, Math.max(...polygon.map((point) => point.y)));
+    if (minX >= maxX || minY >= maxY) {
+      return null;
+    }
+
+    let nearNdc = Infinity;
+    let farNdc = -Infinity;
+    const sample = (x: number, y: number) => {
+      const point = new THREE.Vector2(x, y);
+      if (!this.isPointInsidePolygon(point, polygon)) {
+        return;
+      }
+      this.areaDepthRaycaster.setFromCamera(point, this.camera);
+      const hit = this.areaDepthRaycaster.intersectObjects(meshes, false)[0];
+      if (!hit) {
+        return;
+      }
+      const depth = hit.point.clone().project(this.camera).z;
+      if (Number.isFinite(depth)) {
+        nearNdc = Math.min(nearNdc, depth);
+        farNdc = Math.max(farNdc, depth);
+      }
+    };
+
+    polygon.forEach((point) => sample(point.x, point.y));
+    const columns = Math.max(2, Math.min(16, Math.ceil((maxX - minX) / 0.125)));
+    const rows = Math.max(2, Math.min(16, Math.ceil((maxY - minY) / 0.125)));
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        sample(
+          THREE.MathUtils.lerp(minX, maxX, (column + 0.5) / columns),
+          THREE.MathUtils.lerp(minY, maxY, (row + 0.5) / rows),
+        );
+      }
+    }
+
+    if (!Number.isFinite(nearNdc) || !Number.isFinite(farNdc)) {
+      return null;
+    }
+    const margin = Math.max(0.01, Math.min(0.05, (farNdc - nearNdc) * 0.1));
+    return {
+      nearNdc: Math.max(-1, nearNdc - margin),
+      farNdc: Math.min(1, farNdc + margin),
+    };
+  }
+
+  private isPointInsidePolygon(point: THREE.Vector2, polygon: THREE.Vector2[]): boolean {
+    let inside = false;
+    for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+      const currentPoint = polygon[index];
+      const previousPoint = polygon[previous];
+      const intersects =
+        currentPoint.y > point.y !== previousPoint.y > point.y &&
+        point.x <
+          ((previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)) /
+            (previousPoint.y - currentPoint.y) +
+            currentPoint.x;
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+    return inside;
   }
 
   /** Allow geometry dragging while preserving annotation visibility and selection. */
@@ -677,6 +766,7 @@ export class ThreePresenter {
       }
     });
 
+    this.refreshAreaClipVolumesIfCameraChanged();
     const previousAutoClear = this.renderer.autoClear;
     this.renderer.autoClear = false;
     this.renderer.clear(true, true, true);
@@ -690,6 +780,19 @@ export class ThreePresenter {
       this.viewportGizmo.update();
       this.viewportGizmo.render();
     }
+  }
+
+  private refreshAreaClipVolumesIfCameraChanged(): void {
+    this.camera.updateMatrixWorld();
+    const signature = [
+      ...this.camera.matrixWorld.elements,
+      ...this.camera.projectionMatrix.elements,
+    ].map((value) => value.toPrecision(12)).join(',');
+    if (signature === this.areaClipCameraSignature) {
+      return;
+    }
+    this.annotationManager.refreshAreaClipVolumes();
+    this.areaClipCameraSignature = signature;
   }
 
   /** Overlay visible model fragments inside projected 3D area boundaries. */

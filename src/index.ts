@@ -104,6 +104,7 @@ export {
   createProjectedClipVolumeGeometry,
   triangulateProjectedBoundary,
 } from './utils/AreaGeometry';
+export type { ClipDepthRange } from './utils/AreaGeometry';
 
 export {
   calculateObjectStats,

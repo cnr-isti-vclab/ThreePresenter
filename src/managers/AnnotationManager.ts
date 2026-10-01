@@ -209,6 +209,16 @@ export class AnnotationManager {
     return volumes;
   }
 
+  /** Rebuild area volumes after the presenter camera has changed. */
+  refreshAreaClipVolumes(): void {
+    for (const [id, marker] of this.markers) {
+      const annotation = this.annotations.get(id);
+      if (annotation?.type === 'area') {
+        this.updateAreaClipVolumeGeometry(marker, this.toVertexVectors(annotation.geometry));
+      }
+    }
+  }
+
   /**
    * Render annotations in the scene
    * @param annotations - Array of annotations to render
@@ -1024,11 +1034,22 @@ export class AnnotationManager {
         child.geometry = nextGeometry ?? new THREE.BufferGeometry();
         child.visible = !this.areaClipVolumeEnabled && nextGeometry !== null && nextGeometry !== undefined;
       } else if (child instanceof THREE.Mesh && role === 'area-clip-volume') {
-        const nextGeometry = this.areaClipVolumeProjector?.(renderVertices);
-        child.geometry.dispose();
-        child.geometry = nextGeometry ?? new THREE.BufferGeometry();
+        this.updateAreaClipVolumeGeometry(marker, renderVertices);
       } else if (child instanceof THREE.Group && role === 'line-handles') {
         this.syncEditableLineHandles(child, controlVertices);
+      }
+    });
+  }
+
+  private updateAreaClipVolumeGeometry(
+    marker: THREE.Object3D,
+    vertices: THREE.Vector3[],
+  ): void {
+    const nextGeometry = this.areaClipVolumeProjector?.(vertices);
+    marker.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.userData.annotationRole === 'area-clip-volume') {
+        child.geometry.dispose();
+        child.geometry = nextGeometry ?? new THREE.BufferGeometry();
       }
     });
   }
