@@ -142,6 +142,7 @@ export class AnnotationManager {
   private areaSurfaceProjector: AreaSurfaceProjector | null = null;
   private areaClipVolumeProjector: AreaClipVolumeProjector | null = null;
   private areaClipVolumeEnabled = false;
+  private areaSurfaceFillsVisible = true;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -212,6 +213,11 @@ export class AnnotationManager {
     this.updateAllMarkerAppearances();
   }
 
+  setAreaSurfaceFillsVisible(visible: boolean): void {
+    this.areaSurfaceFillsVisible = visible;
+    this.updateAllMarkerAppearances();
+  }
+
   /** Return hidden volume meshes used by the presenter render pass. */
   getAreaClipVolumes(): THREE.Mesh[] {
     const volumes: THREE.Mesh[] = [];
@@ -230,8 +236,16 @@ export class AnnotationManager {
     for (const [id, marker] of this.markers) {
       const annotation = this.annotations.get(id);
       if (annotation?.type === 'area') {
-        this.updateAreaSurfaceFillGeometry(marker, this.toVertexVectors(annotation.geometry));
         this.updateAreaClipVolumeGeometry(marker, this.toVertexVectors(annotation.geometry));
+      }
+    }
+  }
+
+  refreshAreaSurfaceFills(): void {
+    for (const [id, marker] of this.markers) {
+      const annotation = this.annotations.get(id);
+      if (annotation?.type === 'area') {
+        this.updateAreaSurfaceFillGeometry(marker, this.toVertexVectors(annotation.geometry));
       }
     }
   }
@@ -995,7 +1009,8 @@ export class AnnotationManager {
     const fill = new THREE.Mesh(geometry, material);
     fill.userData.annotationRole = 'area-fill';
     fill.renderOrder = 8;
-    fill.visible = (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
+    fill.visible = this.areaSurfaceFillsVisible &&
+      (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
       geometry.getAttribute('position') !== undefined;
     return fill;
   }
@@ -1080,7 +1095,8 @@ export class AnnotationManager {
       if (child instanceof THREE.Mesh && child.userData.annotationRole === 'area-fill') {
         child.geometry.dispose();
         child.geometry = nextGeometry ?? new THREE.BufferGeometry();
-        child.visible = (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
+        child.visible = this.areaSurfaceFillsVisible &&
+          (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
           nextGeometry !== null && nextGeometry !== undefined;
       }
     });
@@ -1106,7 +1122,8 @@ export class AnnotationManager {
         material.opacity = isSelected
           ? this.config.selectedAreaFillOpacity
           : this.config.areaFillOpacity;
-        child.visible = (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
+        child.visible = this.areaSurfaceFillsVisible &&
+          (this.areaSurfaceProjector !== null || !this.areaClipVolumeEnabled) &&
           child.geometry.getAttribute('position') !== undefined;
       } else if (child instanceof Line2 && role === 'line-visible') {
         child.material.color.setHex(isSelected ? this.config.selectedColor : this.config.color);

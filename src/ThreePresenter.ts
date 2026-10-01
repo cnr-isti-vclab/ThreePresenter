@@ -116,6 +116,8 @@ export class ThreePresenter {
   private areaDepthRaycaster = new THREE.Raycaster();
   private areaSurfaceRaycaster = new THREE.Raycaster();
   private areaClipCameraSignature = '';
+  private areaDepthRangeCache = new Map<string, ClipDepthRange | null>();
+  private areaSurfaceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
   onAnnotationGeometryCreated: AnnotationGeometryCreatedCallback | null = null;
@@ -255,7 +257,7 @@ export class ThreePresenter {
       this.createSurfaceSampledAreaGeometry(vertices),
     );
     this.annotationManager.setAreaClipVolumeProjector((vertices) =>
-      createProjectedClipVolumeGeometry(vertices, this.camera, this.getAreaDepthRange(vertices)),
+      createProjectedClipVolumeGeometry(vertices, this.camera, this.getCachedAreaDepthRange(vertices)),
     );
     this.annotationManager.setAreaClipVolumeEnabled(true);
     this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
@@ -378,6 +380,10 @@ export class ThreePresenter {
 
     // Dispose managers
     this.renderLoop.dispose();
+    if (this.areaSurfaceRefreshTimer !== null) {
+      clearTimeout(this.areaSurfaceRefreshTimer);
+      this.areaSurfaceRefreshTimer = null;
+    }
     this.inputController.dispose();
     this.annotationManager.dispose();
     this.measurementManager.dispose();
@@ -630,6 +636,26 @@ export class ThreePresenter {
     if (!Number.isFinite(nearNdc) || !Number.isFinite(farNdc)) {
       return null;
     }
+    return this.createAreaDepthRange(nearNdc, farNdc);
+  }
+
+  private getCachedAreaDepthRange(vertices: THREE.Vector3[]): ClipDepthRange | null {
+    const key = this.getAreaDepthRangeKey(vertices);
+    if (this.areaDepthRangeCache.has(key)) {
+      return this.areaDepthRangeCache.get(key) ?? null;
+    }
+    const range = this.getAreaDepthRange(vertices);
+    if (range !== null) {
+      this.areaDepthRangeCache.set(key, range);
+    }
+    return range;
+  }
+
+  private getAreaDepthRangeKey(vertices: THREE.Vector3[]): string {
+    return vertices.map((vertex) => `${vertex.x},${vertex.y},${vertex.z}`).join(';');
+  }
+
+  private createAreaDepthRange(nearNdc: number, farNdc: number): ClipDepthRange {
     const margin = Math.max(0.01, Math.min(0.05, (farNdc - nearNdc) * 0.1));
     return {
       nearNdc: Math.max(-1, nearNdc - margin),
@@ -678,6 +704,17 @@ export class ThreePresenter {
         this.areaSurfaceRaycaster.setFromCamera(point, this.camera);
         samples.push(this.areaSurfaceRaycaster.intersectObjects(meshes, false)[0]?.point ?? null);
       }
+    }
+
+    const depths = samples
+      .filter((point): point is THREE.Vector3 => point !== null)
+      .map((point) => point.clone().project(this.camera).z)
+      .filter((depth) => Number.isFinite(depth));
+    if (depths.length > 0) {
+      this.areaDepthRangeCache.set(
+        this.getAreaDepthRangeKey(vertices),
+        this.createAreaDepthRange(Math.min(...depths), Math.max(...depths)),
+      );
     }
 
     const positions: number[] = [];
@@ -887,7 +924,18 @@ export class ThreePresenter {
     if (signature === this.areaClipCameraSignature) {
       return;
     }
+    this.annotationManager.setAreaSurfaceFillsVisible(false);
     this.annotationManager.refreshAreaClipVolumes();
+    if (this.areaSurfaceRefreshTimer !== null) {
+      clearTimeout(this.areaSurfaceRefreshTimer);
+    }
+    this.areaSurfaceRefreshTimer = setTimeout(() => {
+      this.areaSurfaceRefreshTimer = null;
+      this.areaDepthRangeCache.clear();
+      this.annotationManager.refreshAreaSurfaceFills();
+      this.annotationManager.refreshAreaClipVolumes();
+      this.annotationManager.setAreaSurfaceFillsVisible(true);
+    }, 120);
     this.areaClipCameraSignature = signature;
   }
 
