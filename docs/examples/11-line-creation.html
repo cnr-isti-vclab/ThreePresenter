@@ -31,7 +31,7 @@
     <button id="area" type="button">Draw area boundary</button>
     <label><input id="editing" type="checkbox" checked> Edit vertices</label>
     <label><input id="surface-follow" type="checkbox"> Surface follow</label>
-    <div id="status">Click to add points; double-click or Enter to finish; Escape to cancel. Areas show an experimental view-projected clipping overlay. Stop drawing to edit.</div>
+    <div id="status">Click to add points; double-click or Enter to finish; Escape to cancel. Areas show an experimental mesh-sampled fill and clipping overlay. Stop drawing to edit.</div>
   </div>
 
   <script type="importmap">
@@ -88,7 +88,7 @@
         surfacePath
       });
       presenter.getAnnotationManager().render(annotations);
-      status.textContent = `Created ${geometry.length} vertices. The area fill is an experimental view-projected clipping overlay. Stop drawing and select the boundary to move, insert, or delete vertices.`;
+      status.textContent = `Created ${geometry.length} vertices. The area uses an experimental mesh-sampled fill and clipping overlay. Stop drawing and select the boundary to move, insert, or delete vertices.`;
     };
 
     presenter.getAnnotationManager().onAnnotationUpdated((updated) => {

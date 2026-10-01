@@ -107,6 +107,28 @@ test('area prototype fill is added and updated separately from its outline', () 
   manager.dispose();
 });
 
+test('mesh-sampled area fill remains visible alongside the clip overlay', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setAreaSurfaceProjector(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+      0, 0, 0, 1, 0, 0, 0, 1, 0,
+    ], 3));
+    geometry.setIndex([0, 1, 2]);
+    return geometry;
+  });
+  manager.setAreaClipVolumeEnabled(true);
+  manager.render([{
+    id: 'area-surface', label: 'Surface area', type: 'area',
+    geometry: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+  }]);
+  const marker = manager.getMarker('area-surface');
+  const fill = marker.children.find((child) => child.userData.annotationRole === 'area-fill');
+  assert.ok(fill);
+  assert.equal(fill.visible, true);
+  manager.dispose();
+});
+
 function createSelectedLineManager(type = 'line') {
   const manager = new AnnotationManager(new THREE.Scene());
   manager.render([{

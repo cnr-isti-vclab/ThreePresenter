@@ -114,6 +114,7 @@ export class ThreePresenter {
   private annotationCreationMode: AnnotationCreationMode = null;
   private surfacePathRaycaster = new THREE.Raycaster();
   private areaDepthRaycaster = new THREE.Raycaster();
+  private areaSurfaceRaycaster = new THREE.Raycaster();
   private areaClipCameraSignature = '';
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
@@ -249,6 +250,9 @@ export class ThreePresenter {
     );
     this.annotationManager.setAreaFillProjector((vertices) =>
       createProjectedAreaGeometry(vertices, (vertex) => vertex.clone().project(this.camera)),
+    );
+    this.annotationManager.setAreaSurfaceProjector((vertices) =>
+      this.createSurfaceSampledAreaGeometry(vertices),
     );
     this.annotationManager.setAreaClipVolumeProjector((vertices) =>
       createProjectedClipVolumeGeometry(vertices, this.camera, this.getAreaDepthRange(vertices)),
@@ -631,6 +635,98 @@ export class ThreePresenter {
       nearNdc: Math.max(-1, nearNdc - margin),
       farNdc: Math.min(1, farNdc + margin),
     };
+  }
+
+  private createSurfaceSampledAreaGeometry(
+    vertices: THREE.Vector3[],
+  ): THREE.BufferGeometry | null {
+    const meshes = this.getVisibleModelMeshes();
+    if (meshes.length === 0 || vertices.length < 3) {
+      return null;
+    }
+
+    this.camera.updateMatrixWorld();
+    const polygon = vertices.map((vertex) => {
+      const projected = vertex.clone().project(this.camera);
+      return new THREE.Vector2(projected.x, projected.y);
+    });
+    if (polygon.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+      return null;
+    }
+
+    const minX = Math.max(-1, Math.min(...polygon.map((point) => point.x)));
+    const maxX = Math.min(1, Math.max(...polygon.map((point) => point.x)));
+    const minY = Math.max(-1, Math.min(...polygon.map((point) => point.y)));
+    const maxY = Math.min(1, Math.max(...polygon.map((point) => point.y)));
+    if (minX >= maxX || minY >= maxY) {
+      return null;
+    }
+
+    const columns = Math.max(3, Math.min(24, Math.ceil((maxX - minX) / 0.08)));
+    const rows = Math.max(3, Math.min(24, Math.ceil((maxY - minY) / 0.08)));
+    const samples: Array<THREE.Vector3 | null> = [];
+    for (let row = 0; row <= rows; row += 1) {
+      for (let column = 0; column <= columns; column += 1) {
+        const point = new THREE.Vector2(
+          THREE.MathUtils.lerp(minX, maxX, column / columns),
+          THREE.MathUtils.lerp(minY, maxY, row / rows),
+        );
+        if (!this.isPointInsidePolygon(point, polygon)) {
+          samples.push(null);
+          continue;
+        }
+        this.areaSurfaceRaycaster.setFromCamera(point, this.camera);
+        samples.push(this.areaSurfaceRaycaster.intersectObjects(meshes, false)[0]?.point ?? null);
+      }
+    }
+
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const vertexIndices = new Map<number, number>();
+    const addSample = (sampleIndex: number): number | null => {
+      const point = samples[sampleIndex];
+      if (!point) {
+        return null;
+      }
+      const existing = vertexIndices.get(sampleIndex);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const index = positions.length / 3;
+      positions.push(point.x, point.y, point.z);
+      vertexIndices.set(sampleIndex, index);
+      return index;
+    };
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const topLeft = row * (columns + 1) + column;
+        const topRight = topLeft + 1;
+        const bottomLeft = topLeft + columns + 1;
+        const bottomRight = bottomLeft + 1;
+        const corners = [topLeft, topRight, bottomLeft, bottomRight];
+        if (corners.some((index) => samples[index] === null)) {
+          continue;
+        }
+        const a = addSample(topLeft);
+        const b = addSample(topRight);
+        const c = addSample(bottomRight);
+        const d = addSample(bottomLeft);
+        if (a !== null && b !== null && c !== null && d !== null) {
+          indices.push(a, b, c, a, c, d);
+        }
+      }
+    }
+
+    if (indices.length === 0) {
+      return null;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+    return geometry;
   }
 
   private isPointInsidePolygon(point: THREE.Vector2, polygon: THREE.Vector2[]): boolean {
