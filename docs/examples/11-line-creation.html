@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Example 11 - Line Annotation Creation and Editing</title>
+  <title>Example 11 - Line and Area Boundary Editing</title>
   <style>
     body { margin: 0; font-family: system-ui; }
     #viewer { width: 100vw; height: 100vh; }
@@ -28,9 +28,10 @@
   <div id="viewer"></div>
   <div id="ui">
     <button id="line" type="button">Draw line</button>
+    <button id="area" type="button">Draw area boundary</button>
     <label><input id="editing" type="checkbox" checked> Edit vertices</label>
     <label><input id="surface-follow" type="checkbox"> Surface follow</label>
-    <div id="status">Select a line to edit it. Surface follow creates dense samples along the visible model surface while retaining sparse editable controls.</div>
+    <div id="status">Click to add points; double-click or Enter to finish; Escape to cancel. Areas show an experimental view-projected clipping overlay. Stop drawing to edit.</div>
   </div>
 
   <script type="importmap">
@@ -50,15 +51,15 @@
       fileUrlResolver: new StaticBaseUrlResolver('../assets')
     });
     const annotations = [];
-    const lineButton = document.getElementById('line');
+    const drawingButtons = ['line', 'area'].map((id) => document.getElementById(id));
     const editingCheckbox = document.getElementById('editing');
     const surfaceFollowCheckbox = document.getElementById('surface-follow');
     const status = document.getElementById('status');
 
-    lineButton.addEventListener('click', () => {
-      const active = presenter.getAnnotationCreationMode() === 'line';
-      presenter.setAnnotationCreationMode(active ? null : 'line');
-    });
+    drawingButtons.forEach((button) => button.addEventListener('click', () => {
+      const active = presenter.getAnnotationCreationMode() === button.id;
+      presenter.setAnnotationCreationMode(active ? null : button.id);
+    }));
 
     editingCheckbox.addEventListener('change', () => {
       presenter.setAnnotationEditingEnabled(editingCheckbox.checked);
@@ -70,30 +71,30 @@
     surfaceFollowCheckbox.addEventListener('change', () => {
       presenter.setLineSurfaceFollowEnabled(surfaceFollowCheckbox.checked);
       status.textContent = surfaceFollowCheckbox.checked
-        ? 'Surface follow enabled: new line segments are projected onto the visible model surface.'
-        : 'Surface follow disabled: new line segments are straight 3D chords.';
+        ? 'Surface follow enabled: new boundary segments are projected onto the visible model surface.'
+        : 'Surface follow disabled: new boundary segments are straight 3D chords.';
     });
 
     presenter.onAnnotationCreationModeChange = (mode) => {
-      lineButton.classList.toggle('active', mode === 'line');
-      lineButton.textContent = mode === 'line' ? 'Stop drawing' : 'Draw line';
+      drawingButtons.forEach((button) => button.classList.toggle('active', mode === button.id));
     };
 
-    presenter.onAnnotationGeometryCreated = (type, geometry) => {
+    presenter.onAnnotationGeometryCreated = (type, geometry, surfacePath) => {
       annotations.push({
-        id: `line-${annotations.length + 1}`,
-        label: `Line ${annotations.length + 1}`,
+        id: `${type}-${annotations.length + 1}`,
+        label: `${type} ${annotations.length + 1}`,
         type,
-        geometry
+        geometry,
+        surfacePath
       });
       presenter.getAnnotationManager().render(annotations);
-      status.textContent = `Created ${geometry.length} vertices. Stop drawing and select the line to move, insert, or delete vertices.`;
+      status.textContent = `Created ${geometry.length} vertices. The area fill is an experimental view-projected clipping overlay. Stop drawing and select the boundary to move, insert, or delete vertices.`;
     };
 
     presenter.getAnnotationManager().onAnnotationUpdated((updated) => {
       const index = annotations.findIndex(({ id }) => id === updated.id);
       if (index !== -1) annotations[index] = updated;
-      status.textContent = 'Line vertex updated.';
+      status.textContent = 'Boundary vertex updated.';
     });
 
     await presenter.loadScene({

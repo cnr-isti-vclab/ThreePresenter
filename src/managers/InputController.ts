@@ -142,11 +142,15 @@ export class InputController {
   }
 
   setAnnotationCreationMode(mode: AnnotationCreationMode) {
-    if (this.annotationCreationMode === 'line' && mode !== 'line') {
+    if (this.isPathCreationMode() && mode !== this.annotationCreationMode) {
       this.releaseCreationPointer();
     }
     this.annotationCreationMode = mode;
     this.updateCursor();
+  }
+
+  private isPathCreationMode(): boolean {
+    return this.annotationCreationMode === 'line' || this.annotationCreationMode === 'area';
   }
 
   getAnnotationCreationMode(): AnnotationCreationMode {
@@ -348,7 +352,7 @@ export class InputController {
 
   handleDoubleClick(event: MouseEvent) {
     if (!this.enabled) return;
-    if (this.annotationCreationMode === 'line') {
+    if (this.isPathCreationMode()) {
       event.preventDefault();
       event.stopPropagation();
       this.config.onAnnotationCreationComplete?.();
@@ -439,7 +443,7 @@ export class InputController {
 
   private handlePointerDown(event: PointerEvent) {
     if (!this.enabled) return;
-    if (this.annotationCreationMode === 'line') {
+    if (this.isPathCreationMode()) {
       if (event.button !== 0) {
         return;
       }
@@ -477,7 +481,7 @@ export class InputController {
   private handlePointerMove(event: PointerEvent) {
     if (!this.enabled) return;
 
-    if (this.annotationCreationMode === 'line') {
+    if (this.isPathCreationMode()) {
       if (this.creationPointer?.pointerId === event.pointerId) {
         const dx = event.clientX - this.creationPointer.clientX;
         const dy = event.clientY - this.creationPointer.clientY;
@@ -591,7 +595,7 @@ export class InputController {
 
   private handlePointerLeave() {
     if (this.annotationCreationMode !== null || this.isMeasurementMode || this.activeDragPointerId !== null) {
-      if (this.annotationCreationMode === 'line') {
+      if (this.isPathCreationMode()) {
         this.config.onAnnotationCreationPreview?.(null);
       }
       return;
@@ -620,7 +624,7 @@ export class InputController {
       event.preventDefault();
       return;
     }
-    if (this.annotationCreationMode !== 'line') {
+    if (!this.isPathCreationMode() || this.isTextInputTarget(event.target)) {
       return;
     }
     if (event.key === 'Escape') {

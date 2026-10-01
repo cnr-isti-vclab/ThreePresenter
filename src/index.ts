@@ -100,6 +100,12 @@ export {
 export type { GeometryStats } from './utils/GeometryUtils';
 
 export {
+  createProjectedAreaGeometry,
+  createProjectedClipVolumeGeometry,
+  triangulateProjectedBoundary,
+} from './utils/AreaGeometry';
+
+export {
   calculateObjectStats,
   calculateSceneBoundingBox,
   getMaxDimension,

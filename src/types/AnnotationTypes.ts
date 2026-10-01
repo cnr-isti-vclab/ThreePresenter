@@ -14,7 +14,7 @@ export type AnnotationType = 'point' | 'line' | 'area';
  * Annotation geometry currently being created interactively.
  * `null` restores normal annotation selection/navigation.
  */
-export type AnnotationCreationMode = 'point' | 'line' | null;
+export type AnnotationCreationMode = 'point' | 'line' | 'area' | null;
 
 /**
  * Geometry data for an annotation
@@ -25,7 +25,7 @@ export type AnnotationGeometry =
   | [number, number, number]  // Point
   | [number, number, number][]; // Line or Area
 
-/** Sparse controls retained for a dense line projected onto the visible surface. */
+/** Sparse controls retained for a dense line or area boundary projected onto the visible surface. */
 export interface AnnotationSurfacePath {
   mode: 'view-projected';
   controlVertices: [number, number, number][];
@@ -41,7 +41,7 @@ export interface Annotation {
   description?: string;
   type: AnnotationType;
   geometry: AnnotationGeometry;
-  /** Optional sparse controls for a dense surface-following line. */
+  /** Optional sparse controls for a dense surface-following line or area boundary. */
   surfacePath?: AnnotationSurfacePath;
   /**
    * Optional normal vector.
@@ -101,6 +101,12 @@ export interface AnnotationConfig {
   lineHitWidth?: number;
   /** Screen-space size of vertices shown on a selected line */
   lineVertexSize?: number;
+  /** Prototype fill color for closed area boundaries (hex) */
+  areaFillColor?: number;
+  /** Prototype fill opacity for unselected areas (0-1) */
+  areaFillOpacity?: number;
+  /** Prototype fill opacity for selected areas (0-1) */
+  selectedAreaFillOpacity?: number;
 }
 
 /**

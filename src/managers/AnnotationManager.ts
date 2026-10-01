@@ -64,6 +64,9 @@ const DEFAULT_CONFIG: Required<AnnotationConfig> = {
   lineOccludedDashCount: 14,
   lineHitWidth: 12,
   lineVertexSize: 10,
+  areaFillColor: 0xffffff,
+  areaFillOpacity: 0.14,
+  selectedAreaFillOpacity: 0.24,
 };
 
 const POINT_TEXTURE_SIZE = 128;
@@ -73,6 +76,7 @@ const LINE_HANDLE_TEXTURE_RADIUS = 24;
 type ScreenSpaceLineMaterial = LineMaterial & { linewidth: number };
 
 interface LineDraft {
+  closed: boolean;
   controlVertices: THREE.Vector3[];
   vertices: THREE.Vector3[];
   surfacePath?: AnnotationSurfacePath;
@@ -93,6 +97,14 @@ export interface LineDraftResult {
 type SurfacePathProjector = (
   controlVertices: [number, number, number][],
 ) => [number, number, number][];
+
+type AreaFillProjector = (
+  vertices: THREE.Vector3[],
+) => THREE.BufferGeometry | null;
+
+type AreaClipVolumeProjector = (
+  vertices: THREE.Vector3[],
+) => THREE.BufferGeometry | null;
 
 interface ActiveAnnotationEdit {
   annotationId: string;
@@ -122,6 +134,9 @@ export class AnnotationManager {
   private lineDraft: LineDraft | null = null;
   private lineSurfaceFollowEnabled = false;
   private surfacePathProjector: SurfacePathProjector | null = null;
+  private areaFillProjector: AreaFillProjector | null = null;
+  private areaClipVolumeProjector: AreaClipVolumeProjector | null = null;
+  private areaClipVolumeEnabled = false;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -151,6 +166,47 @@ export class AnnotationManager {
 
   getLineSurfaceFollowEnabled(): boolean {
     return this.lineSurfaceFollowEnabled;
+  }
+
+  /** Configure the presenter-owned prototype area fill generator. */
+  setAreaFillProjector(projector: AreaFillProjector | null): void {
+    this.areaFillProjector = projector;
+    for (const [id, marker] of this.markers) {
+      const annotation = this.annotations.get(id);
+      if (annotation?.type === 'area') {
+        this.updateMarkerGeometry(marker, annotation);
+      }
+    }
+  }
+
+  /** Configure the presenter-owned view-extruded clipping-volume generator. */
+  setAreaClipVolumeProjector(projector: AreaClipVolumeProjector | null): void {
+    this.areaClipVolumeProjector = projector;
+    for (const [id, marker] of this.markers) {
+      const annotation = this.annotations.get(id);
+      if (annotation?.type === 'area') {
+        this.updateMarkerGeometry(marker, annotation);
+      }
+    }
+  }
+
+  /** Enable the stencil overlay path and hide the boundary-only fill. */
+  setAreaClipVolumeEnabled(enabled: boolean): void {
+    this.areaClipVolumeEnabled = enabled;
+    this.updateAllMarkerAppearances();
+  }
+
+  /** Return hidden volume meshes used by the presenter render pass. */
+  getAreaClipVolumes(): THREE.Mesh[] {
+    const volumes: THREE.Mesh[] = [];
+    for (const marker of this.markers.values()) {
+      marker.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData.annotationRole === 'area-clip-volume') {
+          volumes.push(child);
+        }
+      });
+    }
+    return volumes;
   }
 
   /**
@@ -391,13 +447,17 @@ export class AnnotationManager {
   }
 
   /** Add a sparse control vertex to the active line draft. */
-  addLineDraftVertex(point: [number, number, number]): void {
+  addLineDraftVertex(point: [number, number, number], closed = false): void {
     if (!this.lineDraft) {
-      this.lineDraft = this.createLineDraft();
+      this.lineDraft = this.createLineDraft(closed);
       this.scene.add(this.lineDraft.group);
     }
 
-    this.lineDraft.controlVertices.push(new THREE.Vector3(point[0], point[1], point[2]));
+    const vertex = new THREE.Vector3(...point);
+    if (this.lineDraft.controlVertices.some((existing, index, vertices) =>
+      (closed || index === vertices.length - 1) && existing.distanceToSquared(vertex) < 1e-16
+    )) return;
+    this.lineDraft.controlVertices.push(vertex);
     this.rebuildLineDraftPath(this.lineDraft);
     this.lineDraft.previewPoint = null;
     this.updateLineDraftGeometry();
@@ -418,13 +478,15 @@ export class AnnotationManager {
     return this.lineDraft !== null;
   }
 
-  /** Commit a valid line draft, or discard it when fewer than two control vertices exist. */
+  /** Commit a valid open or closed boundary; discard incomplete or degenerate drafts. */
   finalizeLineDraft(): LineDraftResult | null {
-    if (!this.lineDraft || this.lineDraft.controlVertices.length < 2) {
+    if (!this.lineDraft || this.lineDraft.controlVertices.length < 2 ||
+      (this.lineDraft.closed && !this.isValidArea(this.lineDraft.controlVertices))) {
       this.cancelLineDraft();
       return null;
     }
 
+    this.rebuildLineDraftPath(this.lineDraft, this.lineDraft.closed);
     const geometry = this.lineDraft.vertices.map(
       (point) => [point.x, point.y, point.z] as [number, number, number],
     );
@@ -532,7 +594,7 @@ export class AnnotationManager {
       return true;
     }
     return Boolean(
-      annotation?.type === 'line' &&
+      (annotation?.type === 'line' || annotation?.type === 'area') &&
       this.selectedIds.size === 1 &&
       marker.userData.annotationRole === 'line-vertex-handle' &&
       Number.isInteger(vertexIndex) &&
@@ -550,10 +612,10 @@ export class AnnotationManager {
     const annotation = this.annotations.get(annotationId)!;
     this.activeEdit = {
       annotationId,
-      vertexIndex: annotation.type === 'line' ? vertexIndex : undefined,
+      vertexIndex: (annotation.type === 'line' || annotation.type === 'area') ? vertexIndex : undefined,
       snapshot: this.cloneAnnotation(annotation),
     };
-    if (annotation.type === 'line' && vertexIndex !== undefined) {
+    if ((annotation.type === 'line' || annotation.type === 'area') && vertexIndex !== undefined) {
       this.selectedLineVertex = { annotationId, vertexIndex };
     }
     const markerRoot = this.markers.get(annotationId);
@@ -576,7 +638,7 @@ export class AnnotationManager {
 
     if (annotation.type === 'point') {
       annotation.geometry = [...point] as [number, number, number];
-    } else if (annotation.type === 'line' && this.activeEdit.vertexIndex !== undefined) {
+    } else if ((annotation.type === 'line' || annotation.type === 'area') && this.activeEdit.vertexIndex !== undefined) {
       const controlVertices = this.getLineControlVertices(annotation);
       controlVertices[this.activeEdit.vertexIndex] = [...point] as [number, number, number];
       this.regenerateSurfacePath(annotation);
@@ -597,6 +659,10 @@ export class AnnotationManager {
     }
     const annotationId = this.activeEdit.annotationId;
     const annotation = this.annotations.get(annotationId);
+    if (annotation?.type === 'area' && !this.isValidArea(this.getLineControlVectors(annotation))) {
+      this.cancelAnnotationEdit();
+      return;
+    }
     this.activeEdit = null;
     const marker = this.markers.get(annotationId);
     if (marker) {
@@ -665,7 +731,7 @@ export class AnnotationManager {
     const annotation = annotationId ? this.annotations.get(annotationId) : undefined;
     if (
       !annotationId ||
-      annotation?.type !== 'line' ||
+      (annotation?.type !== 'line' && annotation?.type !== 'area') ||
       !this.selectedIds.has(annotationId) ||
       this.selectedIds.size !== 1
     ) {
@@ -673,13 +739,18 @@ export class AnnotationManager {
     }
 
     const renderVertices = annotation.geometry as [number, number, number][];
-    if (segmentIndex < 0 || segmentIndex >= renderVertices.length - 1) {
+    if (segmentIndex < 0 || segmentIndex >= renderVertices.length - (annotation.type === 'area' ? 0 : 1)) {
       return false;
     }
 
-    this.notifyAnnotationEditStart(annotation);
     const vertexIndex = this.controlInsertionIndex(annotation, segmentIndex);
     const controlVertices = this.getLineControlVertices(annotation);
+    if (annotation.type === 'area') {
+      const candidate = this.getLineControlVectors(annotation);
+      candidate.splice(vertexIndex, 0, new THREE.Vector3(...point));
+      if (!this.isValidArea(candidate)) return true;
+    }
+    this.notifyAnnotationEditStart(annotation);
     controlVertices.splice(vertexIndex, 0, [...point] as [number, number, number]);
     this.regenerateSurfacePath(annotation);
     this.selectedLineVertex = { annotationId, vertexIndex };
@@ -692,14 +763,14 @@ export class AnnotationManager {
     return true;
   }
 
-  /** Delete the selected line vertex, but never reduce a line below two vertices. */
+  /** Delete a control without degenerating the line or closed area boundary. */
   deleteSelectedLineVertex(): boolean {
     if (!this.editingEnabled || this.activeEdit || !this.selectedLineVertex) {
       return false;
     }
     const { annotationId, vertexIndex } = this.selectedLineVertex;
     const annotation = this.annotations.get(annotationId);
-    if (annotation?.type !== 'line' || !this.selectedIds.has(annotationId)) {
+    if ((annotation?.type !== 'line' && annotation?.type !== 'area') || !this.selectedIds.has(annotationId)) {
       this.clearSelectedLineVertex();
       return false;
     }
@@ -709,7 +780,10 @@ export class AnnotationManager {
       this.clearSelectedLineVertex();
       return false;
     }
-    if (controlVertices.length <= 2) {
+    if (controlVertices.length <= (annotation.type === 'area' ? 3 : 2) ||
+      (annotation.type === 'area' && !this.isValidArea(
+        this.getLineControlVectors(annotation).filter((_, index) => index !== vertexIndex),
+      ))) {
       return true;
     }
 
@@ -858,10 +932,62 @@ export class AnnotationManager {
       false,
     );
     const handles = this.createEditableLineHandles(controlVertices);
-    handles.visible = isSelected && this.selectedIds.size === 1;
+    handles.visible = this.editingEnabled && isSelected && this.selectedIds.size === 1;
 
-    group.add(occludedUnderlay, occludedLine, underlay, visibleLine, hitLine, handles);
+    const fill = closed ? this.createAreaFill(renderVertices, isSelected) : null;
+    group.add(
+      ...(fill ? [fill] : []),
+      ...(closed ? [this.createAreaClipVolume(renderVertices)] : []),
+      occludedUnderlay,
+      occludedLine,
+      underlay,
+      visibleLine,
+      hitLine,
+      handles,
+    );
     return group;
+  }
+
+  private createAreaFill(
+    vertices: THREE.Vector3[],
+    isSelected: boolean,
+  ): THREE.Mesh {
+    const geometry = this.areaFillProjector?.(vertices) ?? new THREE.BufferGeometry();
+    const material = new THREE.MeshBasicMaterial({
+      color: this.config.areaFillColor,
+      transparent: true,
+      opacity: isSelected ? this.config.selectedAreaFillOpacity : this.config.areaFillOpacity,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    const fill = new THREE.Mesh(geometry, material);
+    fill.userData.annotationRole = 'area-fill';
+    fill.renderOrder = 8;
+    fill.visible = !this.areaClipVolumeEnabled && geometry.getAttribute('position') !== undefined;
+    return fill;
+  }
+
+  private createAreaClipVolume(vertices: THREE.Vector3[]): THREE.Mesh {
+    const geometry = this.areaClipVolumeProjector?.(vertices) ?? new THREE.BufferGeometry();
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide,
+      colorWrite: false,
+      depthTest: false,
+      depthWrite: false,
+      stencilWrite: true,
+      stencilFunc: THREE.AlwaysStencilFunc,
+      stencilRef: 1,
+      stencilZPass: THREE.ReplaceStencilOp,
+    });
+    const volume = new THREE.Mesh(geometry, material);
+    volume.userData.annotationRole = 'area-clip-volume';
+    volume.visible = false;
+    return volume;
   }
 
   /**
@@ -892,6 +1018,15 @@ export class AnnotationManager {
       const role = child.userData.annotationRole as string | undefined;
       if (child instanceof Line2 && role?.startsWith('line-')) {
         this.replaceLineGeometry(child, points);
+      } else if (child instanceof THREE.Mesh && role === 'area-fill') {
+        const nextGeometry = this.areaFillProjector?.(renderVertices);
+        child.geometry.dispose();
+        child.geometry = nextGeometry ?? new THREE.BufferGeometry();
+        child.visible = !this.areaClipVolumeEnabled && nextGeometry !== null && nextGeometry !== undefined;
+      } else if (child instanceof THREE.Mesh && role === 'area-clip-volume') {
+        const nextGeometry = this.areaClipVolumeProjector?.(renderVertices);
+        child.geometry.dispose();
+        child.geometry = nextGeometry ?? new THREE.BufferGeometry();
       } else if (child instanceof THREE.Group && role === 'line-handles') {
         this.syncEditableLineHandles(child, controlVertices);
       }
@@ -912,7 +1047,15 @@ export class AnnotationManager {
 
     marker.traverse((child) => {
       const role = child.userData.annotationRole as string | undefined;
-      if (child instanceof Line2 && role === 'line-visible') {
+      if (child instanceof THREE.Mesh && role === 'area-fill') {
+        const material = child.material as THREE.MeshBasicMaterial;
+        material.color.setHex(this.config.areaFillColor);
+        material.opacity = isSelected
+          ? this.config.selectedAreaFillOpacity
+          : this.config.areaFillOpacity;
+        child.visible = !this.areaClipVolumeEnabled &&
+          child.geometry.getAttribute('position') !== undefined;
+      } else if (child instanceof Line2 && role === 'line-visible') {
         child.material.color.setHex(isSelected ? this.config.selectedColor : this.config.color);
         child.material.opacity = isSelected ? this.config.selectedOpacity : this.config.opacity;
         child.material.linewidth = this.config.lineWidth;
@@ -1001,9 +1144,9 @@ export class AnnotationManager {
     const annotation = this.annotations.get(annotationId);
     if (
       !this.selectedIds.has(annotationId) ||
-      annotation?.type !== 'line' ||
+      (annotation?.type !== 'line' && annotation?.type !== 'area') ||
       vertexIndex < 0 ||
-      vertexIndex >= (annotation.geometry as [number, number, number][]).length
+      vertexIndex >= this.getLineControlVertices(annotation).length
     ) {
       this.selectedLineVertex = null;
     }
@@ -1178,7 +1321,7 @@ export class AnnotationManager {
     return handles;
   }
 
-  private createLineDraft(): LineDraft {
+  private createLineDraft(closed: boolean): LineDraft {
     const group = new THREE.Group();
     group.name = 'annotation-line-draft';
     group.renderOrder = 20;
@@ -1216,6 +1359,7 @@ export class AnnotationManager {
 
     group.add(committedUnderlay, committedLine, previewLine, handles);
     return {
+      closed,
       controlVertices: [],
       vertices: [],
       surfaceFollow: this.lineSurfaceFollowEnabled,
@@ -1240,7 +1384,9 @@ export class AnnotationManager {
 
     const lastVertex = draft.controlVertices[draft.controlVertices.length - 1];
     if (lastVertex && draft.previewPoint) {
-      this.replaceLineGeometry(draft.previewLine, [lastVertex, draft.previewPoint]);
+      this.replaceLineGeometry(draft.previewLine, [lastVertex, draft.previewPoint,
+        ...(draft.closed && draft.controlVertices.length >= 2 ? [draft.controlVertices[0]] : []),
+      ]);
       draft.previewLine.computeLineDistances();
       draft.previewLine.visible = true;
     } else {
@@ -1337,7 +1483,7 @@ export class AnnotationManager {
   }
 
   private getLineControlVertices(annotation: Annotation): [number, number, number][] {
-    if (annotation.type === 'line' && annotation.surfacePath?.mode === 'view-projected') {
+    if ((annotation.type === 'line' || annotation.type === 'area') && annotation.surfacePath?.mode === 'view-projected') {
       return annotation.surfacePath.controlVertices;
     }
     return annotation.geometry as [number, number, number][];
@@ -1348,12 +1494,12 @@ export class AnnotationManager {
       .map((point) => new THREE.Vector3(point[0], point[1], point[2]));
   }
 
-  private rebuildLineDraftPath(draft: LineDraft): void {
+  private rebuildLineDraftPath(draft: LineDraft, closed = false): void {
     const controlVertices = draft.controlVertices.map(
       (point) => [point.x, point.y, point.z] as [number, number, number],
     );
     const projectedVertices = draft.surfaceFollow && controlVertices.length >= 2
-      ? this.surfacePathProjector?.(controlVertices)
+      ? this.projectSurfacePath(controlVertices, closed)
       : null;
 
     draft.vertices = (projectedVertices && projectedVertices.length >= 2
@@ -1366,15 +1512,33 @@ export class AnnotationManager {
   }
 
   private regenerateSurfacePath(annotation: Annotation): void {
-    if (annotation.type !== 'line' || annotation.surfacePath?.mode !== 'view-projected') {
+    if ((annotation.type !== 'line' && annotation.type !== 'area') || annotation.surfacePath?.mode !== 'view-projected') {
       return;
     }
     const controlVertices = annotation.surfacePath.controlVertices;
-    const projectedVertices = this.surfacePathProjector?.(controlVertices);
+    const projectedVertices = this.projectSurfacePath(controlVertices, annotation.type === 'area');
     annotation.geometry = (projectedVertices && projectedVertices.length >= 2
       ? projectedVertices
       : controlVertices
     ).map((point) => [...point] as [number, number, number]);
+  }
+
+  /** Project the closing segment too, but store the first vertex only once. */
+  private projectSurfacePath(controls: [number, number, number][], closed: boolean) {
+    const projected = this.surfacePathProjector?.(closed ? [...controls, controls[0]] : controls);
+    return closed ? projected?.slice(0, -1) : projected;
+  }
+
+  private isValidArea(points: THREE.Vector3[]): boolean {
+    if (points.length < 3) return false;
+    const scale = Math.max(...points.map((point) => point.distanceToSquared(points[0])));
+    if (!scale || points.some((point, index) =>
+      points.slice(0, index).some((other) => point.distanceToSquared(other) <= scale * 1e-12)
+    )) return false;
+    const edge = points[1].clone().sub(points[0]);
+    return points.slice(2).some((point) =>
+      edge.clone().cross(point.clone().sub(points[0])).lengthSq() > scale * scale * 1e-12
+    );
   }
 
   private findControlVertexIndices(
@@ -1408,7 +1572,7 @@ export class AnnotationManager {
         return controlIndex + 1;
       }
     }
-    return indices.length - 1;
+    return annotation.type === 'area' ? indices.length : indices.length - 1;
   }
 
   private applyPointVisualOffset(

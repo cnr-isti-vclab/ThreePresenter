@@ -6,6 +6,10 @@ import type { FileUrlResolver } from './types/FileUrlResolver';
 import { StaticBaseUrlResolver } from './types/FileUrlResolver';
 import { calculateObjectStats, type GeometryStats } from './utils/GeometryUtils';
 import { ScaleIndicator } from './utils/ScaleIndicator';
+import {
+  createProjectedAreaGeometry,
+  createProjectedClipVolumeGeometry,
+} from './utils/AreaGeometry';
 
 import { CameraManager } from './managers/CameraManager';
 import { LightingManager } from './managers/LightingManager';
@@ -194,7 +198,7 @@ export class ThreePresenter {
     this.camera = this.cameraManager.getActiveCamera();
 
     // Renderer setup
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
     this.renderer.setSize(widthPx, heightPx);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -234,11 +238,19 @@ export class ThreePresenter {
     this.annotationManager = new AnnotationManager(this.scene, {
       color: 0xffffff,
       selectedColor: 0x1e3a8a,
-      markerSize: 10
+      markerSize: 10,
+      areaFillColor: 0x1e3a8a,
     });
     this.annotationManager.setSurfacePathProjector((controlVertices) =>
       this.projectLineOntoVisibleSurface(controlVertices),
     );
+    this.annotationManager.setAreaFillProjector((vertices) =>
+      createProjectedAreaGeometry(vertices, (vertex) => vertex.clone().project(this.camera)),
+    );
+    this.annotationManager.setAreaClipVolumeProjector((vertices) =>
+      createProjectedClipVolumeGeometry(vertices, this.camera),
+    );
+    this.annotationManager.setAreaClipVolumeEnabled(true);
     this.measurementManager = managers.measurementManager || new MeasurementManager(this.scene, {
       unit: 'units',
       precision: 3,
@@ -270,8 +282,8 @@ export class ThreePresenter {
           return;
         }
         if (this.annotationCreationMode !== null) {
-          if (this.annotationCreationMode === 'line') {
-            this.annotationManager.addLineDraftVertex([point.x, point.y, point.z]);
+          if (this.annotationCreationMode === 'line' || this.annotationCreationMode === 'area') {
+            this.annotationManager.addLineDraftVertex([point.x, point.y, point.z], this.annotationCreationMode === 'area');
           }
           return;
         }
@@ -303,7 +315,7 @@ export class ThreePresenter {
         if (!isMulti) this.annotationManager.clearSelection();
       },
       onAnnotationCreationPreview: (point) => {
-        if (this.annotationCreationMode !== 'line') {
+        if (this.annotationCreationMode !== 'line' && this.annotationCreationMode !== 'area') {
           return;
         }
         this.annotationManager.updateLineDraftPreview(
@@ -311,16 +323,16 @@ export class ThreePresenter {
         );
       },
       onAnnotationCreationComplete: () => {
-        if (this.annotationCreationMode !== 'line') {
+        if (this.annotationCreationMode !== 'line' && this.annotationCreationMode !== 'area') {
           return;
         }
         const draft = this.annotationManager.finalizeLineDraft();
         if (draft) {
-          this.onAnnotationGeometryCreated?.('line', draft.geometry, draft.surfacePath);
+          this.onAnnotationGeometryCreated?.(this.annotationCreationMode, draft.geometry, draft.surfacePath);
         }
       },
       onAnnotationCreationCancel: () => {
-        if (this.annotationCreationMode === 'line') {
+        if (this.annotationCreationMode === 'line' || this.annotationCreationMode === 'area') {
           this.annotationManager.cancelLineDraft();
         }
       },
@@ -440,7 +452,7 @@ export class ThreePresenter {
 
   /**
    * Select the geometry type created by model interaction.
-   * Line mode is exposed here; its sequence session is implemented separately.
+   * Line and area modes share a vertex-sequence session.
    */
   setAnnotationCreationMode(mode: AnnotationCreationMode): void {
     if (mode === this.annotationCreationMode) {
@@ -452,7 +464,7 @@ export class ThreePresenter {
     }
 
     const previousMode = this.annotationCreationMode;
-    if (previousMode === 'line' && mode !== 'line') {
+    if (previousMode === 'line' || previousMode === 'area') {
       this.annotationManager.cancelLineDraft();
     }
     this.annotationCreationMode = mode;
@@ -665,13 +677,87 @@ export class ThreePresenter {
       }
     });
 
+    const previousAutoClear = this.renderer.autoClear;
+    this.renderer.autoClear = false;
+    this.renderer.clear(true, true, true);
     this.renderer.render(this.scene, this.camera);
+    this.renderAreaClipOverlay();
+    this.renderer.autoClear = previousAutoClear;
     this.labelRenderer.render(this.scene, this.camera);
 
     // Render viewport gizmo if present
     if (this.viewportGizmo && typeof this.viewportGizmo.render === 'function') {
       this.viewportGizmo.update();
       this.viewportGizmo.render();
+    }
+  }
+
+  /** Overlay visible model fragments inside projected 3D area boundaries. */
+  private renderAreaClipOverlay(): void {
+    const volumes = this.annotationManager.getAreaClipVolumes();
+    const models = Object.values(this.models);
+    if (volumes.length === 0 || models.length === 0) {
+      return;
+    }
+
+    const visibility = new Map<THREE.Object3D, boolean>();
+    this.scene.traverse((object) => visibility.set(object, object.visible));
+    const showAncestors = (object: THREE.Object3D) => {
+      let current: THREE.Object3D | null = object;
+      while (current) {
+        current.visible = true;
+        current = current.parent;
+      }
+    };
+    const overlayMaterial = new THREE.MeshBasicMaterial({
+      color: 0x1e3a8a,
+      transparent: true,
+      opacity: 0.24,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      stencilWrite: true,
+      stencilFunc: THREE.EqualStencilFunc,
+      stencilRef: 1,
+      stencilZPass: THREE.KeepStencilOp,
+    });
+    const previousOverrideMaterial = this.scene.overrideMaterial;
+    const previousBackground = this.scene.background;
+
+    try {
+      // Secondary renders must not redraw the scene background over the main frame.
+      this.scene.background = null;
+      for (const object of visibility.keys()) {
+        object.visible = false;
+      }
+      for (const volume of volumes) {
+        showAncestors(volume);
+        volume.visible = true;
+      }
+
+      this.renderer.clear(false, false, true);
+      this.renderer.render(this.scene, this.camera);
+
+      for (const object of visibility.keys()) {
+        object.visible = false;
+      }
+      for (const model of models) {
+        model.traverse((object) => {
+          object.visible = true;
+        });
+        showAncestors(model);
+      }
+
+      this.scene.overrideMaterial = overlayMaterial;
+      this.renderer.render(this.scene, this.camera);
+    } finally {
+      this.scene.overrideMaterial = previousOverrideMaterial;
+      this.scene.background = previousBackground;
+      overlayMaterial.dispose();
+      for (const [object, visible] of visibility) {
+        object.visible = visible;
+      }
+      this.renderer.clear(false, false, true);
     }
   }
 
@@ -1434,7 +1520,7 @@ export class ThreePresenter {
 
   takeScreenshot() {
     // Render the current frame to ensure we have the latest state
-    this.renderer.render(this.scene, this.camera);
+    this.renderFrame();
 
     // Get the canvas data as a data URL (PNG format)
     const dataURL = this.renderer.domElement.toDataURL('image/png');

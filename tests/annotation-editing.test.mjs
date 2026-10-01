@@ -11,6 +11,8 @@ const canvasContext = {
 };
 
 let AnnotationManager;
+let createProjectedAreaGeometry;
+let createProjectedClipVolumeGeometry;
 
 before(async () => {
   globalThis.document = {
@@ -23,16 +25,76 @@ before(async () => {
       };
     },
   };
-  ({ AnnotationManager } = await import('../dist/three-presenter.js'));
+  ({
+    AnnotationManager,
+    createProjectedAreaGeometry,
+    createProjectedClipVolumeGeometry,
+  } = await import('../dist/three-presenter.js'));
 });
 
-function createSelectedLineManager() {
+test('area prototype triangulates concave boundaries in projected view space', () => {
+  const vertices = [
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(2, 0, 0),
+    new THREE.Vector3(2, 1, 0),
+    new THREE.Vector3(1, 0.4, 0),
+    new THREE.Vector3(0, 1, 0),
+  ];
+  const geometry = createProjectedAreaGeometry(vertices, (vertex) => vertex);
+  assert.ok(geometry);
+  assert.equal(geometry.getAttribute('position').count, vertices.length);
+  assert.equal(geometry.getIndex().count, 9);
+  geometry.dispose();
+});
+
+test('area clipping prototype extrudes the projected boundary through the camera range', () => {
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.z = 5;
+  camera.updateMatrixWorld();
+  const vertices = [
+    new THREE.Vector3(-1, -1, 0),
+    new THREE.Vector3(1, -1, 0),
+    new THREE.Vector3(1, 1, 0),
+    new THREE.Vector3(-1, 1, 0),
+  ];
+  const geometry = createProjectedClipVolumeGeometry(vertices, camera);
+  assert.ok(geometry);
+  assert.equal(geometry.getAttribute('position').count, 8);
+  assert.equal(geometry.getIndex().count, 36);
+  geometry.dispose();
+});
+
+test('area prototype fill is added and updated separately from its outline', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setAreaFillProjector((vertices) => createProjectedAreaGeometry(vertices, (vertex) => vertex));
+  manager.setAreaClipVolumeProjector((vertices) => createProjectedClipVolumeGeometry(vertices, new THREE.PerspectiveCamera()));
+  manager.render([{
+    id: 'area-1', label: 'Test area', type: 'area',
+    geometry: [[0, 0, 0], [2, 0, 0], [0, 2, 0]],
+  }]);
+  const marker = manager.getMarker('area-1');
+  const fill = marker.children.find((child) => child.userData.annotationRole === 'area-fill');
+  assert.ok(fill);
+  assert.equal(fill.visible, true);
+  assert.equal(fill.geometry.getIndex().count, 3);
+  manager.select(['area-1']);
+  assert.equal(fill.material.opacity, manager.getConfig().selectedAreaFillOpacity);
+  assert.equal(manager.getAreaClipVolumes().length, 1);
+  const volume = manager.getAreaClipVolumes()[0];
+  assert.equal(volume.material.stencilWrite, true);
+  assert.equal(volume.material.stencilRef, 1);
+  manager.dispose();
+});
+
+function createSelectedLineManager(type = 'line') {
   const manager = new AnnotationManager(new THREE.Scene());
   manager.render([{
     id: 'line-1',
     label: 'Test line',
-    type: 'line',
-    geometry: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
+    type,
+    geometry: type === 'area'
+      ? [[0, 0, 0], [2, 0, 0], [0, 2, 0]]
+      : [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
   }]);
   manager.select(['line-1']);
   return manager;
@@ -93,6 +155,150 @@ test('editing mode gates line handles and drag entry', () => {
   assert.equal(manager.canEditAnnotationFromMarker(handle, 1), true);
   assert.equal(handleGroup.visible, true);
   manager.dispose();
+});
+
+test('area drafts preview closure, validate controls, and never duplicate the first point', () => {
+  const scene = new THREE.Scene();
+  const manager = new AnnotationManager(scene);
+  manager.addLineDraftVertex([0, 0, 0], true);
+  manager.addLineDraftVertex([2, 0, 0], true);
+  manager.updateLineDraftPreview([0, 2, 0]);
+  const preview = scene.children[0].children.find((child) => child.userData.annotationRole === 'line-preview');
+  assert.equal(preview.geometry.getAttribute('instanceStart').count, 2);
+  assert.equal(manager.finalizeLineDraft(), null);
+  assert.equal(scene.children.length, 0);
+
+  for (const point of [[0, 0, 0], [1, 0, 0], [2, 0, 0]]) manager.addLineDraftVertex(point, true);
+  assert.equal(manager.finalizeLineDraft(), null, 'collinear areas are invalid');
+
+  const controls = [[0, 0, 0], [2, 0, 0], [0, 2, 0]];
+  for (const point of [...controls, controls[0]]) manager.addLineDraftVertex(point, true);
+  assert.deepEqual(manager.finalizeLineDraft().geometry, controls);
+  manager.addLineDraftVertex([0, 0, 0], true);
+  manager.cancelLineDraft();
+  assert.equal(manager.hasLineDraft(), false);
+  assert.equal(scene.children.length, 0);
+  manager.dispose();
+});
+
+test('area editing supports the closing segment and protects valid geometry', () => {
+  const manager = createSelectedLineManager('area');
+  const updates = [];
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+  const hit = findLineRole(manager, 'line-hit');
+  assert.equal(hit.geometry.getAttribute('instanceStart').count, 3);
+  assert.equal(manager.insertLineVertexFromMarker(hit, 2, [0, 1, 0]), true);
+  assert.deepEqual(updates.at(-1).geometry, [[0, 0, 0], [2, 0, 0], [0, 2, 0], [0, 1, 0]]);
+  assert.equal(manager.deleteSelectedLineVertex(), true);
+  assert.equal(updates.at(-1).geometry.length, 3);
+  const count = updates.length;
+  manager.deleteSelectedLineVertex();
+  assert.equal(updates.length, count, 'cannot delete below three controls');
+
+  const handle = findLineHandle(manager, 2);
+  manager.beginAnnotationEditFromMarker(handle, 2);
+  manager.moveActiveAnnotation([1, 0, 0]);
+  manager.endAnnotationEdit();
+  assert.equal(updates.length, count, 'collinear edits are rolled back');
+  assert.deepEqual(handle.position.toArray(), [0, 2, 0]);
+  manager.beginAnnotationEditFromMarker(handle, 2);
+  manager.moveActiveAnnotation([0, 0, 0]);
+  manager.endAnnotationEdit();
+  assert.deepEqual(handle.position.toArray(), [0, 2, 0], 'duplicate controls are rolled back');
+  manager.beginAnnotationEditFromMarker(handle, 2);
+  manager.moveActiveAnnotation([0, 3, 1]);
+  manager.endAnnotationEdit();
+  assert.deepEqual(updates.at(-1).geometry[2], [0, 3, 1]);
+  manager.setEditingEnabled(false);
+  assert.equal(findHandleGroup(manager).visible, false);
+  assert.equal(manager.beginAnnotationEditFromMarker(handle, 2), false);
+  assert.equal(manager.insertLineVertexFromMarker(hit, 2, [0, 1, 0]), false);
+  manager.dispose();
+});
+
+test('surface-following areas retain sparse controls and sample the closing edge on create and edit', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setSurfacePathProjector((controls) => controls.flatMap((point, index) => index === 0
+    ? [[...point]]
+    : [point.map((value, axis) => (value + controls[index - 1][axis]) / 2), [...point]]));
+  manager.setLineSurfaceFollowEnabled(true);
+  const controls = [[0, 0, 0], [2, 0, 0], [0, 2, 0]];
+  controls.forEach((point) => manager.addLineDraftVertex(point, true));
+  const draft = manager.finalizeLineDraft();
+  assert.equal(draft.geometry.length, 6);
+  assert.deepEqual(draft.geometry.at(-1), [0, 1, 0]);
+  assert.deepEqual(draft.surfacePath.controlVertices, controls);
+  manager.render([{ id: 'line-1', label: 'Area', type: 'area', ...draft }]);
+  manager.select(['line-1']);
+  assert.equal(findHandleGroup(manager).children.length, 3);
+  const updates = [];
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+  assert.equal(manager.insertLineVertexFromMarker(findLineRole(manager, 'line-hit'), 5, [-1, 1, 0]), true);
+  assert.deepEqual(updates.at(-1).surfacePath.controlVertices, [...controls, [-1, 1, 0]]);
+  assert.equal(updates.at(-1).geometry.length, 8);
+  manager.deleteSelectedLineVertex();
+  assert.deepEqual(updates.at(-1).surfacePath.controlVertices, controls);
+  manager.beginAnnotationEditFromMarker(findLineHandle(manager, 0), 0);
+  manager.moveActiveAnnotation([-2, 0, 0]);
+  manager.endAnnotationEdit();
+  assert.deepEqual(updates.at(-1).geometry.at(-1), [-1, 1, 0]);
+  manager.dispose();
+});
+
+test('area input uses single-click placement, finish/cancel keys, and the shared camera lock', async (t) => {
+  const { InputController } = await import('../dist/three-presenter.js');
+  const previous = { window: globalThis.window, document: globalThis.document, HTMLElement: globalThis.HTMLElement };
+  t.after(() => Object.assign(globalThis, previous));
+  const listeners = new Map();
+  const events = {
+    addEventListener: (name, callback) => listeners.set(name, callback),
+    removeEventListener: (name) => listeners.delete(name),
+  };
+  globalThis.window = events;
+  globalThis.document = { ...previous.document, ...events };
+  globalThis.HTMLElement = class {};
+  const element = {
+    ...events, style: {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+    setPointerCapture() {}, releasePointerCapture() {}, hasPointerCapture: () => true,
+  };
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  camera.position.z = 5;
+  camera.updateMatrixWorld();
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshBasicMaterial());
+  const locks = [];
+  let picks = 0, completed = 0, cancelled = 0;
+  const controller = new InputController({
+    domElement: element, getCamera: () => camera, getModels: () => [mesh], getAnnotations: () => [],
+    onModelClick: () => picks++, onModelDoubleClick: () => assert.fail('must not recenter'),
+    onAnnotationClick() {}, onBackgroundClick() {},
+    onAnnotationCreationComplete: () => completed++, onAnnotationCreationCancel: () => cancelled++,
+    onAnnotationDragLockChange: (locked) => locks.push(locked),
+  });
+  controller.setAnnotationCreationMode('area');
+  assert.equal(element.style.cursor, 'crosshair');
+  const event = { clientX: 50, clientY: 50, button: 0, pointerId: 1, preventDefault() {}, stopPropagation() {} };
+  listeners.get('pointerdown')(event);
+  listeners.get('pointerup')(event);
+  assert.deepEqual(locks, [true, false]);
+  controller.handleClick({ ...event, detail: 1 });
+  controller.handleClick({ ...event, detail: 2 });
+  assert.equal(picks, 1);
+  controller.handleDoubleClick(event);
+  listeners.get('keydown')({ ...event, key: 'Enter' });
+  assert.equal(completed, 2);
+  const input = new globalThis.HTMLElement();
+  input.tagName = 'INPUT';
+  listeners.get('keydown')({ ...event, key: 'Enter', target: input });
+  assert.equal(completed, 2, 'typing in a form must not finish a boundary');
+  listeners.get('keydown')({ ...event, key: 'Escape' });
+  assert.equal(cancelled, 1);
+  listeners.get('pointerdown')(event);
+  controller.setAnnotationCreationMode('line');
+  assert.deepEqual(locks, [true, false, true, false], 'switching tools releases the camera');
+  controller.dispose();
+  mesh.geometry.dispose();
+  mesh.material.dispose();
 });
 
 test('selected line handles use the configured screen-space diameter', () => {
