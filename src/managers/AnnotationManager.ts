@@ -143,6 +143,7 @@ export class AnnotationManager {
   private areaClipVolumeProjector: AreaClipVolumeProjector | null = null;
   private areaClipVolumeEnabled = false;
   private areaSurfaceFillsVisible = true;
+  private annotationsVisible = true;
   
   // Callbacks
   private selectionCallbacks: SelectionChangeCallback[] = [];
@@ -218,6 +219,21 @@ export class AnnotationManager {
     this.updateAllMarkerAppearances();
   }
 
+  /** Hide or show annotation rendering without discarding selection or geometry. */
+  setAnnotationsVisible(visible: boolean): void {
+    this.annotationsVisible = visible;
+    for (const marker of this.markers.values()) {
+      marker.visible = visible;
+    }
+    if (this.lineDraft) {
+      this.lineDraft.group.visible = visible;
+    }
+  }
+
+  getAnnotationsVisible(): boolean {
+    return this.annotationsVisible;
+  }
+
   /** Return hidden volume meshes used by the presenter render pass. */
   getAreaClipVolumes(): THREE.Mesh[] {
     const volumes: THREE.Mesh[] = [];
@@ -279,6 +295,7 @@ export class AnnotationManager {
         }
         marker = this.createMarker(annotation, isSelected);
         this.markers.set(annotation.id, marker);
+        marker.visible = this.annotationsVisible;
         this.scene.add(marker);
       }
     });
@@ -394,7 +411,7 @@ export class AnnotationManager {
    * Get all marker meshes (for raycasting)
    */
   getAllMarkers(): THREE.Object3D[] {
-    return Array.from(this.markers.values());
+    return this.annotationsVisible ? Array.from(this.markers.values()) : [];
   }
 
   /**
@@ -517,6 +534,48 @@ export class AnnotationManager {
 
   hasLineDraft(): boolean {
     return this.lineDraft !== null;
+  }
+
+  /** Adapt the selected line to the visible model surface from the current camera. */
+  adaptSelectedLineToCurrentView(): boolean {
+    if (!this.editingEnabled || this.selectedIds.size !== 1 || !this.surfacePathProjector) {
+      return false;
+    }
+
+    const annotationId = this.selectedIds.values().next().value as string | undefined;
+    const annotation = annotationId ? this.annotations.get(annotationId) : undefined;
+    if (!annotation || annotation.type !== 'line') {
+      return false;
+    }
+
+    const controlVertices = this.getLineControlVertices(annotation).map(
+      (point) => [...point] as [number, number, number],
+    );
+    if (controlVertices.length < 2) {
+      return false;
+    }
+
+    const projectedVertices = this.projectSurfacePath(controlVertices, false);
+    if (!projectedVertices || projectedVertices.length < 2) {
+      return false;
+    }
+
+    this.notifyAnnotationEditStart(annotation);
+    annotation.geometry = projectedVertices.map(
+      (point) => [...point] as [number, number, number],
+    );
+    annotation.surfacePath = {
+      mode: 'view-projected',
+      controlVertices,
+    };
+
+    const marker = this.markers.get(annotation.id);
+    if (marker) {
+      this.updateMarkerGeometry(marker, annotation);
+      this.updateMarkerAppearance(marker, true);
+    }
+    this.notifyAnnotationUpdated(annotation);
+    return true;
   }
 
   /** Commit a valid open or closed boundary; discard incomplete or degenerate drafts. */
@@ -1395,6 +1454,7 @@ export class AnnotationManager {
     const group = new THREE.Group();
     group.name = 'annotation-line-draft';
     group.renderOrder = 20;
+    group.visible = this.annotationsVisible;
 
     const committedUnderlay = this.createScreenSpaceLine(
       [],

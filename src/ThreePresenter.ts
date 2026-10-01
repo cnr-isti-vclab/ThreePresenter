@@ -507,6 +507,20 @@ export class ThreePresenter {
     return this.annotationManager.getLineSurfaceFollowEnabled();
   }
 
+  /** Hide or show annotation rendering without discarding annotation state. */
+  setAnnotationsVisible(visible: boolean): void {
+    this.annotationManager.setAnnotationsVisible(visible);
+  }
+
+  getAnnotationsVisible(): boolean {
+    return this.annotationManager.getAnnotationsVisible();
+  }
+
+  /** Adapt the selected line to the model surface using the current camera. */
+  adaptSelectedLineToCurrentView(): boolean {
+    return this.annotationManager.adaptSelectedLineToCurrentView();
+  }
+
   /**
    * Sample each control segment through the active camera and raycast the
    * front-most model surface. Controls themselves remain exact endpoints.

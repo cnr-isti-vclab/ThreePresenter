@@ -414,6 +414,49 @@ test('surface-following lines retain sparse controls and regenerate dense vertic
   manager.dispose();
 });
 
+test('annotation visibility hides rendering and raycast targets without clearing selection', () => {
+  const manager = createSelectedLineManager();
+  const marker = manager.getMarker('line-1');
+
+  manager.setAnnotationsVisible(false);
+  assert.equal(manager.getAnnotationsVisible(), false);
+  assert.equal(marker.visible, false);
+  assert.deepEqual(manager.getSelected(), ['line-1']);
+  assert.deepEqual(manager.getAllMarkers(), []);
+
+  manager.setAnnotationsVisible(true);
+  assert.equal(manager.getAnnotationsVisible(), true);
+  assert.equal(marker.visible, true);
+  assert.deepEqual(manager.getAllMarkers(), [marker]);
+  manager.dispose();
+});
+
+test('selected lines can be adapted to the current surface projector', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setSurfacePathProjector((controls) => [
+    [...controls[0]],
+    [1, 0, 1],
+    [...controls[controls.length - 1]],
+  ]);
+  manager.render([{
+    id: 'line-1',
+    label: 'Unadapted line',
+    type: 'line',
+    geometry: [[0, 0, 0], [2, 0, 0]],
+  }]);
+  manager.select(['line-1']);
+  const starts = [];
+  const updates = [];
+  manager.onAnnotationEditStart((annotation) => starts.push(annotation));
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+
+  assert.equal(manager.adaptSelectedLineToCurrentView(), true);
+  assert.deepEqual(starts[0].geometry, [[0, 0, 0], [2, 0, 0]]);
+  assert.deepEqual(updates[0].geometry, [[0, 0, 0], [1, 0, 1], [2, 0, 0]]);
+  assert.deepEqual(updates[0].surfacePath.controlVertices, [[0, 0, 0], [2, 0, 0]]);
+  manager.dispose();
+});
+
 test('occluded line has a contrasting dashed pass restricted to greater depth', () => {
   const manager = createSelectedLineManager();
   const occludedUnderlay = findLineRole(manager, 'line-occluded-underlay');
