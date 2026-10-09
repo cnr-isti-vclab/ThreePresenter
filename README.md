@@ -43,6 +43,10 @@ ui.setButtonVisible('screenshot', true);
 
 - `docs/skin/threepresenter-skin.svg` is a sample external SVG skin for `DefaultUI`, aligned with the OpenLIME visual language used in OCRA.
 
+**Developer diagnostics:**
+
+Pass `debug: true` to `ThreePresenter` to show a developer-only bug button in the lower-left corner. Press it to choose diagnostics, view-adapted samples, area triangulation, geodesic sampled points, and sparse control points. After line adaptation the diagnostics report mesh size, sampled point counts, and preparation/path timings; orange points show view-adapted samples, cyan points show geodesic samples, magenta points show geodesic controls, and area triangle edges show the generated fill triangulation. The same mode can be toggled later with `setDebugEnabled()`.
+
 ## Development
 
 Once you have cloned the repository, install dependencies and start the development server with:  

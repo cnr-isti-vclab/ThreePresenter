@@ -28,6 +28,7 @@ import type {
   ModelDefinition,
   PresenterState
 } from './types/SceneTypes';
+import type { GeometryWorkerClient } from './geometry/GeometryWorkerClient';
 
 export type { SceneDescription, ModelDefinition, PresenterState };
 export { AnnotationManager };
@@ -41,6 +42,8 @@ export interface ThreePresenterConfig {
   mount: HTMLDivElement | string;
   /** Optional file URL resolver */
   fileUrlResolver?: FileUrlResolver;
+  /** Enable the developer-only diagnostics overlay. */
+  debug?: boolean;
   /** Optional dependency injection for managers */
   managers?: {
     modelLoader?: ModelLoader;
@@ -62,6 +65,25 @@ export interface LoadingProgress {
   total: number;
   percentage: number;
   status: 'loading' | 'parsing' | 'complete' | 'error';
+}
+
+export interface GeodesicSurfaceInfo {
+  id: string;
+  vertexCount: number;
+  faceCount: number;
+  meshCount: number;
+  skippedMeshCount: number;
+}
+
+export interface GeodesicDebugInfo extends GeodesicSurfaceInfo {
+  controlPointCount: number;
+  outputPointCount: number;
+  segmentPointCounts: number[];
+  segmentTimesMs: number[];
+  preparationMs: number;
+  pathMs: number;
+  totalMs: number;
+  pathLength: number;
 }
 
 /**
@@ -118,6 +140,33 @@ export class ThreePresenter {
   private areaClipCameraSignature = '';
   private areaDepthRangeCache = new Map<string, ClipDepthRange | null>();
   private areaSurfaceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private geometryWorker: GeometryWorkerClient | null = null;
+  private geodesicSurfaceId: string | null = null;
+  private geodesicSurfaceRevision = 0;
+  private debugEnabled = false;
+  private debugRoot: HTMLDivElement | null = null;
+  private debugPanel: HTMLDivElement | null = null;
+  private debugMenuOpen = false;
+  private debugShowPanel = true;
+  private debugShowGeodesicSamples = true;
+  private debugShowGeodesicControls = true;
+  private debugShowViewSamples = true;
+  private debugShowAreaTriangulation = true;
+  private debugPathGroup = new THREE.Group();
+  private debugAreaGroup = new THREE.Group();
+  private lastGeodesicDebugInfo: GeodesicDebugInfo | null = null;
+  private lastViewProjectionDebugInfo: {
+    controlPointCount: number;
+    outputPointCount: number;
+    segmentSampleCounts: number[];
+  } | null = null;
+  private lastAreaDebugInfo: {
+    mode: 'surface' | 'projected';
+    boundaryPointCount: number;
+    sampledVertexCount: number;
+    triangleCount: number;
+  } | null = null;
+  private debugPanelUpdatedAt = 0;
   isMeasurementMode: boolean = false;
   onPointPicked: ((point: [number, number, number]) => void) | null = null;
   onAnnotationGeometryCreated: AnnotationGeometryCreatedCallback | null = null;
@@ -177,6 +226,13 @@ export class ThreePresenter {
     }
 
     this.scene = new THREE.Scene();
+    this.debugPathGroup.name = 'ThreePresenterDebugGeometry';
+    this.debugPathGroup.visible = false;
+    this.scene.add(this.debugPathGroup);
+    this.debugAreaGroup.name = 'ThreePresenterAreaDebugGeometry';
+    this.debugAreaGroup.visible = false;
+    this.scene.add(this.debugAreaGroup);
+    this.debugEnabled = config.debug === true;
     this.scene.background = new THREE.Color(0x404040);
     const widthPx = this.mount.clientWidth;
     const heightPx = this.mount.clientHeight;
@@ -247,12 +303,20 @@ export class ThreePresenter {
       markerSize: 10,
       areaFillColor: 0x1e3a8a,
     });
-    this.annotationManager.setSurfacePathProjector((controlVertices) =>
-      this.projectLineOntoVisibleSurface(controlVertices),
+    this.annotationManager.setSurfacePathProjector((controlVertices, visibilityVertices, options) =>
+      this.projectLineOntoVisibleSurface(
+        controlVertices,
+        options?.requireVisibility ? visibilityVertices : undefined,
+      ),
     );
-    this.annotationManager.setAreaFillProjector((vertices) =>
-      createProjectedAreaGeometry(vertices, (vertex) => vertex.clone().project(this.camera)),
-    );
+    this.annotationManager.setAreaFillProjector((vertices) => {
+      const geometry = createProjectedAreaGeometry(
+        vertices,
+        (vertex) => vertex.clone().project(this.camera),
+      );
+      this.updateDebugAreaTriangulation(vertices, geometry, 'projected');
+      return geometry;
+    });
     this.annotationManager.setAreaSurfaceProjector((vertices) =>
       this.createSurfaceSampledAreaGeometry(vertices),
     );
@@ -373,6 +437,7 @@ export class ThreePresenter {
     // Resize handler
     this.handleResize = this.handleResize.bind(this);
     window.addEventListener('resize', this.handleResize);
+    this.setDebugEnabled(this.debugEnabled);
   }
 
   dispose() {
@@ -389,6 +454,17 @@ export class ThreePresenter {
     this.measurementManager.dispose();
     this.lightingManager.dispose();
     this.modelLoader.dispose();
+    this.geometryWorker?.dispose();
+    this.geometryWorker = null;
+    this.clearDebugPath();
+    this.clearDebugArea();
+    this.scene.remove(this.debugPathGroup);
+    this.scene.remove(this.debugAreaGroup);
+    if (this.debugRoot?.parentNode) {
+      this.debugRoot.parentNode.removeChild(this.debugRoot);
+    }
+    this.debugRoot = null;
+    this.debugPanel = null;
 
     // Clean up scale indicator
     this.removeScaleIndicator();
@@ -405,6 +481,38 @@ export class ThreePresenter {
       this.viewportGizmo.dispose();
       this.viewportGizmo = null;
     }
+  }
+
+  /** Enable or disable the developer-only diagnostics overlay and geometry. */
+  setDebugEnabled(enabled: boolean): void {
+    this.debugEnabled = enabled;
+    this.debugPathGroup.visible = enabled;
+    this.debugAreaGroup.visible = enabled;
+    if (enabled) {
+      this.createDebugControls();
+      this.annotationManager.refreshAreaSurfaceFills();
+      this.updateDebugVisualizationVisibility();
+      this.updateDebugPanel(true);
+    } else if (this.debugRoot?.parentNode) {
+      this.debugRoot.parentNode.removeChild(this.debugRoot);
+      this.debugRoot = null;
+      this.debugPanel = null;
+      this.debugMenuOpen = false;
+    }
+  }
+
+  getDebugEnabled(): boolean {
+    return this.debugEnabled;
+  }
+
+  getLastGeodesicDebugInfo(): GeodesicDebugInfo | null {
+    return this.lastGeodesicDebugInfo
+      ? {
+          ...this.lastGeodesicDebugInfo,
+          segmentPointCounts: [...this.lastGeodesicDebugInfo.segmentPointCounts],
+          segmentTimesMs: [...this.lastGeodesicDebugInfo.segmentTimesMs],
+        }
+      : null;
   }
 
   handleResize() {
@@ -521,28 +629,188 @@ export class ThreePresenter {
     return this.annotationManager.adaptSelectedLineToCurrentView();
   }
 
+  /** Adapt the selected line to an approximate mesh geodesic. */
+  async adaptSelectedLineToGeodesic(): Promise<boolean> {
+    return this.annotationManager.adaptSelectedLineToSurface((controlVertices) =>
+      this.computeGeodesicPath(controlVertices),
+    );
+  }
+
+  /** Build a world-space snapshot of visible static meshes for geodesic queries. */
+  async prepareGeodesicSurface(): Promise<GeodesicSurfaceInfo> {
+    const revision = this.geodesicSurfaceRevision;
+    const id = `scene-${revision}`;
+    const { GeometryWorkerClient, extractSurfaceMesh } = await import('./geometry/index');
+    const surface = extractSurfaceMesh(id, Object.values(this.models));
+    if (surface.indices.length === 0) {
+      throw new Error('The scene has no visible triangle meshes supported by the geometry core');
+    }
+
+    this.geometryWorker ??= new GeometryWorkerClient();
+    const registered = await this.geometryWorker.registerMesh(surface);
+    if (revision !== this.geodesicSurfaceRevision) {
+      throw new Error('The scene changed while preparing the geodesic surface');
+    }
+    this.geodesicSurfaceId = id;
+    const previous = this.lastGeodesicDebugInfo;
+    this.lastGeodesicDebugInfo = {
+      id,
+      ...registered,
+      meshCount: surface.meshCount,
+      skippedMeshCount: surface.skippedMeshCount,
+      controlPointCount: previous?.controlPointCount ?? 0,
+      outputPointCount: previous?.outputPointCount ?? 0,
+      segmentPointCounts: previous?.segmentPointCounts ?? [],
+      segmentTimesMs: previous?.segmentTimesMs ?? [],
+      preparationMs: previous?.preparationMs ?? 0,
+      pathMs: previous?.pathMs ?? 0,
+      totalMs: previous?.totalMs ?? 0,
+      pathLength: previous?.pathLength ?? 0,
+    };
+    this.updateDebugPanel(true);
+    return {
+      id,
+      ...registered,
+      meshCount: surface.meshCount,
+      skippedMeshCount: surface.skippedMeshCount,
+    };
+  }
+
+  /** Trace an approximate surface path through sparse world-space control points. */
+  async computeGeodesicPath(
+    controlVertices: [number, number, number][],
+  ): Promise<[number, number, number][]> {
+    const totalStart = performance.now();
+    if (controlVertices.length < 2) {
+      return controlVertices.map((point) => [...point] as [number, number, number]);
+    }
+    const preparationStart = performance.now();
+    if (!this.geodesicSurfaceId || !this.geometryWorker) {
+      await this.prepareGeodesicSurface();
+    }
+    const preparationMs = performance.now() - preparationStart;
+
+    const surfaceId = this.geodesicSurfaceId;
+    const worker = this.geometryWorker;
+    if (!surfaceId || !worker) {
+      throw new Error('The geodesic surface is not available');
+    }
+
+    const path: [number, number, number][] = [];
+    const segmentPointCounts: number[] = [];
+    const segmentTimesMs: number[] = [];
+    for (let index = 1; index < controlVertices.length; index += 1) {
+      const segmentStart = performance.now();
+      const segment = await worker.surfacePathBetweenPoints(
+        surfaceId,
+        controlVertices[index - 1],
+        controlVertices[index],
+      );
+      if (surfaceId !== this.geodesicSurfaceId) {
+        throw new Error('The scene changed while computing the geodesic path');
+      }
+      segmentPointCounts.push(segment.points.length / 3);
+      segmentTimesMs.push(performance.now() - segmentStart);
+      for (let offset = 0; offset < segment.points.length; offset += 3) {
+        const point: [number, number, number] = offset === 0
+          ? [...controlVertices[index - 1]]
+          : offset === segment.points.length - 3
+            ? [...controlVertices[index]]
+            : [
+                segment.points[offset],
+                segment.points[offset + 1],
+                segment.points[offset + 2],
+              ];
+        const previous = path[path.length - 1];
+        if (!previous || previous.some((value, axis) => Math.abs(value - point[axis]) > 1e-12)) {
+          path.push(point);
+        }
+      }
+    }
+    const pathMs = performance.now() - totalStart - preparationMs;
+    const surface = this.lastGeodesicDebugInfo;
+    this.lastGeodesicDebugInfo = {
+      id: surfaceId,
+      vertexCount: surface?.vertexCount ?? 0,
+      faceCount: surface?.faceCount ?? 0,
+      meshCount: surface?.meshCount ?? 0,
+      skippedMeshCount: surface?.skippedMeshCount ?? 0,
+      controlPointCount: controlVertices.length,
+      outputPointCount: path.length,
+      segmentPointCounts,
+      segmentTimesMs,
+      preparationMs,
+      pathMs,
+      totalMs: performance.now() - totalStart,
+      pathLength: this.getPathLength(path),
+    };
+    this.updateDebugPath(path, controlVertices);
+    this.updateDebugPanel(true);
+    return path;
+  }
+
+  private getPathLength(path: [number, number, number][]): number {
+    let length = 0;
+    for (let index = 1; index < path.length; index += 1) {
+      const previous = path[index - 1];
+      const current = path[index];
+      length += Math.hypot(
+        current[0] - previous[0],
+        current[1] - previous[1],
+        current[2] - previous[2],
+      );
+    }
+    return length;
+  }
+
+  private invalidateGeodesicSurface(): void {
+    this.geodesicSurfaceRevision += 1;
+    this.geodesicSurfaceId = null;
+    this.lastGeodesicDebugInfo = null;
+    this.lastViewProjectionDebugInfo = null;
+    this.clearDebugPath();
+    this.updateDebugPanel(true);
+  }
+
   /**
    * Sample each control segment through the active camera and raycast the
    * front-most model surface. Controls themselves remain exact endpoints.
    */
   private projectLineOntoVisibleSurface(
     controlVertices: [number, number, number][],
-  ): [number, number, number][] {
+    visibilityVertices?: [number, number, number][],
+  ): [number, number, number][] | null {
     if (controlVertices.length < 2) {
       return controlVertices.map((point) => [...point] as [number, number, number]);
     }
 
+    this.lastViewProjectionDebugInfo = null;
     this.scene.updateMatrixWorld(true);
     this.camera.updateMatrixWorld();
     const meshes = this.getVisibleModelMeshes();
     if (meshes.length === 0) {
-      return controlVertices.map((point) => [...point] as [number, number, number]);
+      this.clearDebugPath();
+      this.updateDebugPanel(true);
+      return null;
+    }
+
+    if (visibilityVertices) {
+      const invisibleIndex = this.findInvisiblePolylineVertex(visibilityVertices, meshes);
+      if (invisibleIndex !== -1) {
+        console.warn(
+          `⚠️ View adaptation skipped: polyline point ${invisibleIndex + 1} is outside the current view or occluded`,
+        );
+        this.clearDebugPath();
+        this.updateDebugPanel(true);
+        return null;
+      }
     }
 
     const rect = this.renderer.domElement.getBoundingClientRect();
     const viewportWidth = rect.width || this.renderer.domElement.width || 1;
     const viewportHeight = rect.height || this.renderer.domElement.height || 1;
     const result: THREE.Vector3[] = [];
+    const segmentSampleCounts: number[] = [];
     const append = (point: THREE.Vector3) => {
       if (result.length === 0 || result[result.length - 1].distanceToSquared(point) > 1e-16) {
         result.push(point.clone());
@@ -559,6 +827,7 @@ export class ThreePresenter {
         (endNdc.y - startNdc.y) * viewportHeight / 2,
       );
       const sampleCount = Math.max(1, Math.min(256, Math.ceil(screenDistance / 8)));
+      segmentSampleCounts.push(sampleCount);
       append(start);
 
       for (let sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex += 1) {
@@ -579,7 +848,48 @@ export class ThreePresenter {
       }
     }
 
-    return result.map((point) => [point.x, point.y, point.z]);
+    const projectedPath = result.map((point) => [point.x, point.y, point.z] as [number, number, number]);
+    this.lastViewProjectionDebugInfo = {
+      controlPointCount: controlVertices.length,
+      outputPointCount: projectedPath.length,
+      segmentSampleCounts,
+    };
+    this.updateDebugViewPath(projectedPath);
+    this.updateDebugPanel(true);
+    return projectedPath;
+  }
+
+  /** Return the first polyline point that is outside the view or hidden by the mesh. */
+  private findInvisiblePolylineVertex(
+    vertices: [number, number, number][],
+    meshes: THREE.Mesh[],
+  ): number {
+    for (let index = 0; index < vertices.length; index += 1) {
+      const point = new THREE.Vector3(...vertices[index]);
+      const projected = point.clone().project(this.camera);
+      if (
+        !Number.isFinite(projected.x) ||
+        !Number.isFinite(projected.y) ||
+        !Number.isFinite(projected.z) ||
+        projected.x < -1 || projected.x > 1 ||
+        projected.y < -1 || projected.y > 1 ||
+        projected.z < -1 || projected.z > 1
+      ) {
+        return index;
+      }
+
+      this.surfacePathRaycaster.setFromCamera(
+        new THREE.Vector2(projected.x, projected.y),
+        this.camera,
+      );
+      const targetDistance = this.surfacePathRaycaster.ray.origin.distanceTo(point);
+      const hit = this.surfacePathRaycaster.intersectObjects(meshes, false)[0];
+      const tolerance = Math.max(1e-5, targetDistance * 1e-4);
+      if (hit && hit.distance < targetDistance - tolerance) {
+        return index;
+      }
+    }
+    return -1;
   }
 
   private getVisibleModelMeshes(): THREE.Mesh[] {
@@ -680,6 +990,8 @@ export class ThreePresenter {
   private createSurfaceSampledAreaGeometry(
     vertices: THREE.Vector3[],
   ): THREE.BufferGeometry | null {
+    this.lastAreaDebugInfo = null;
+    this.clearDebugArea();
     const meshes = this.getVisibleModelMeshes();
     if (meshes.length === 0 || vertices.length < 3) {
       return null;
@@ -777,6 +1089,7 @@ export class ThreePresenter {
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
+    this.updateDebugAreaTriangulation(vertices, geometry, 'surface');
     return geometry;
   }
 
@@ -893,8 +1206,295 @@ export class ThreePresenter {
     animate();
   }
 
+  private createDebugControls(): void {
+    if (this.debugRoot) return;
+
+    const root = document.createElement('div');
+    Object.assign(root.style, {
+      position: 'absolute',
+      left: '8px',
+      bottom: '8px',
+      zIndex: '30',
+      pointerEvents: 'none',
+    });
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '\ud83d\udc1e';
+    button.title = 'ThreePresenter developer diagnostics';
+    button.setAttribute('aria-label', 'ThreePresenter developer diagnostics');
+    Object.assign(button.style, {
+      width: '32px',
+      height: '32px',
+      padding: '0',
+      border: '1px solid rgba(120, 220, 255, 0.7)',
+      borderRadius: '50%',
+      color: '#d9f7ff',
+      background: 'rgba(0, 20, 28, 0.9)',
+      fontSize: '17px',
+      lineHeight: '30px',
+      cursor: 'pointer',
+      pointerEvents: 'auto',
+    });
+
+    const menu = document.createElement('div');
+    Object.assign(menu.style, {
+      display: 'none',
+      position: 'absolute',
+      left: '0',
+      bottom: '40px',
+      width: '330px',
+      padding: '9px 10px',
+      color: '#d9f7ff',
+      background: 'rgba(0, 20, 28, 0.94)',
+      border: '1px solid rgba(120, 220, 255, 0.55)',
+      borderRadius: '4px',
+      font: '12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace',
+      pointerEvents: 'auto',
+    });
+
+    const title = document.createElement('div');
+    title.textContent = 'ThreePresenter debug';
+    title.style.fontWeight = '600';
+    title.style.marginBottom = '7px';
+    menu.appendChild(title);
+
+    const addOption = (label: string, checked: boolean, onChange: (value: boolean) => void) => {
+      const row = document.createElement('label');
+      Object.assign(row.style, {
+        display: 'block',
+        margin: '4px 0',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      });
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = checked;
+      checkbox.style.marginRight = '6px';
+      checkbox.addEventListener('change', () => onChange(checkbox.checked));
+      row.append(checkbox, document.createTextNode(label));
+      menu.appendChild(row);
+    };
+
+    addOption('Stats and timings', this.debugShowPanel, (value) => {
+      this.debugShowPanel = value;
+      if (this.debugPanel) this.debugPanel.style.display = value ? 'block' : 'none';
+    });
+    addOption('Geodesic sampled points', this.debugShowGeodesicSamples, (value) => {
+      this.debugShowGeodesicSamples = value;
+      this.updateDebugVisualizationVisibility();
+    });
+    addOption('Geodesic control points', this.debugShowGeodesicControls, (value) => {
+      this.debugShowGeodesicControls = value;
+      this.updateDebugVisualizationVisibility();
+    });
+    addOption('View-adapted sample points', this.debugShowViewSamples, (value) => {
+      this.debugShowViewSamples = value;
+      this.updateDebugVisualizationVisibility();
+    });
+    addOption('Area triangulation', this.debugShowAreaTriangulation, (value) => {
+      this.debugShowAreaTriangulation = value;
+      this.updateDebugVisualizationVisibility();
+    });
+
+    const panel = document.createElement('div');
+    panel.setAttribute('aria-label', 'ThreePresenter debug information');
+    Object.assign(panel.style, {
+      marginTop: '8px',
+      paddingTop: '8px',
+      borderTop: '1px solid rgba(120, 220, 255, 0.3)',
+      color: '#d9f7ff',
+      whiteSpace: 'pre-wrap',
+      pointerEvents: 'none',
+    });
+    menu.appendChild(panel);
+
+    button.addEventListener('click', () => {
+      this.debugMenuOpen = !this.debugMenuOpen;
+      menu.style.display = this.debugMenuOpen ? 'block' : 'none';
+      button.setAttribute('aria-expanded', String(this.debugMenuOpen));
+    });
+
+    root.append(menu, button);
+    this.mount.appendChild(root);
+    this.debugRoot = root;
+    this.debugPanel = panel;
+    panel.style.display = this.debugShowPanel ? 'block' : 'none';
+  }
+
+  private updateDebugVisualizationVisibility(): void {
+    this.debugPathGroup.traverse((object) => {
+      const role = object.userData.debugRole;
+      if (role === 'geodesic-samples') {
+        object.visible = this.debugEnabled && this.debugShowGeodesicSamples;
+      } else if (role === 'geodesic-controls') {
+        object.visible = this.debugEnabled && this.debugShowGeodesicControls;
+      } else if (role === 'view-samples') {
+        object.visible = this.debugEnabled && this.debugShowViewSamples;
+      }
+    });
+    this.debugAreaGroup.traverse((object) => {
+      if (object.userData.debugRole === 'area-triangulation') {
+        object.visible = this.debugEnabled && this.debugShowAreaTriangulation;
+      }
+    });
+  }
+
+  private updateDebugPanel(force = false): void {
+    if (!this.debugEnabled || !this.debugPanel) return;
+    const now = performance.now();
+    if (!force && now - this.debugPanelUpdatedAt < 250) return;
+    this.debugPanelUpdatedAt = now;
+
+    const stats = Object.values(this.modelStats);
+    const triangles = stats.reduce((sum, value) => sum + value.triangles, 0);
+    const vertices = stats.reduce((sum, value) => sum + value.vertices, 0);
+    const info = this.lastGeodesicDebugInfo;
+    const viewInfo = this.lastViewProjectionDebugInfo;
+    const areaInfo = this.lastAreaDebugInfo;
+    const lines = [
+      'ThreePresenter debug',
+      `camera: ${this.isOrthographic ? 'orthographic' : 'perspective'}`,
+      `models: ${Object.keys(this.models).length}  vertices: ${vertices}  triangles: ${triangles}`,
+      `surface: ${info ? `${info.vertexCount}v / ${info.faceCount}f (${info.meshCount} meshes)` : 'not prepared'}`,
+      info
+        ? `geodesic: ${info.controlPointCount} controls -> ${info.outputPointCount} points`
+        : 'geodesic: no result',
+      info
+        ? `segments: ${info.segmentPointCounts.join(', ')} points`
+        : '',
+      info
+        ? `segment time: ${info.segmentTimesMs.map((value) => `${value.toFixed(1)} ms`).join(', ')}`
+        : '',
+      info
+        ? `timing: prep ${info.preparationMs.toFixed(1)} ms, path ${info.pathMs.toFixed(1)} ms, total ${info.totalMs.toFixed(1)} ms`
+        : '',
+      info ? `length: ${info.pathLength.toFixed(4)}` : '',
+      viewInfo
+        ? `view samples: ${viewInfo.controlPointCount} controls -> ${viewInfo.outputPointCount} points`
+        : '',
+      viewInfo
+        ? `view segments: ${viewInfo.segmentSampleCounts.join(', ')} intervals`
+        : '',
+      areaInfo
+        ? `area: ${areaInfo.mode}  ${areaInfo.boundaryPointCount} boundary / ${areaInfo.sampledVertexCount} vertices / ${areaInfo.triangleCount} triangles`
+        : '',
+    ].filter(Boolean);
+    this.debugPanel.textContent = lines.join('\n');
+  }
+
+  private updateDebugPath(
+    path: [number, number, number][],
+    controls: [number, number, number][],
+  ): void {
+    this.clearDebugPath();
+    if (!this.debugEnabled) return;
+
+    this.debugPathGroup.add(
+      this.createDebugPoints(path, 0x00e5ff, 6, 'geodesic-samples'),
+      this.createDebugPoints(controls, 0xff66cc, 10, 'geodesic-controls'),
+    );
+    this.updateDebugVisualizationVisibility();
+  }
+
+  private updateDebugViewPath(path: [number, number, number][]): void {
+    if (!this.debugEnabled) return;
+    this.clearDebugPath();
+    this.debugPathGroup.add(this.createDebugPoints(path, 0xffb000, 6, 'view-samples'));
+    this.updateDebugVisualizationVisibility();
+  }
+
+  private updateDebugAreaTriangulation(
+    boundaryVertices: THREE.Vector3[],
+    fillGeometry: THREE.BufferGeometry | null,
+    mode: 'surface' | 'projected',
+  ): void {
+    this.lastAreaDebugInfo = fillGeometry?.index
+      ? {
+          mode,
+          boundaryPointCount: boundaryVertices.length,
+          sampledVertexCount: fillGeometry.getAttribute('position')?.count ?? 0,
+          triangleCount: fillGeometry.index.count / 3,
+        }
+      : null;
+    this.clearDebugArea();
+    if (!this.debugEnabled || !fillGeometry?.index) return;
+
+    const wireframe = new THREE.LineSegments(
+      new THREE.WireframeGeometry(fillGeometry),
+      new THREE.LineBasicMaterial({
+        color: mode === 'surface' ? 0x00ffb0 : 0xffb000,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.9,
+      }),
+    );
+    wireframe.renderOrder = 1002;
+    wireframe.userData.debugRole = 'area-triangulation';
+    this.debugAreaGroup.add(wireframe);
+    this.updateDebugVisualizationVisibility();
+  }
+
+  private createDebugPoints(
+    points: [number, number, number][],
+    color: number,
+    size: number,
+    role: string,
+  ): THREE.Points {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.flat(), 3));
+    const material = new THREE.PointsMaterial({
+      color,
+      size,
+      sizeAttenuation: false,
+      depthTest: false,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const debugPoints = new THREE.Points(geometry, material);
+    debugPoints.renderOrder = role === 'geodesic-controls' ? 1001 : 1000;
+    debugPoints.userData.debugRole = role;
+    return debugPoints;
+  }
+
+  private clearDebugPath(): void {
+    while (this.debugPathGroup.children.length > 0) {
+      const child = this.debugPathGroup.children[this.debugPathGroup.children.length - 1];
+      if (!child) continue;
+      this.debugPathGroup.remove(child);
+      child.traverse((object) => {
+        if (object instanceof THREE.Points) {
+          object.geometry.dispose();
+          const material = object.material;
+          if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+          else material.dispose();
+        }
+      });
+    }
+  }
+
+  private clearDebugArea(): void {
+    while (this.debugAreaGroup.children.length > 0) {
+      const child = this.debugAreaGroup.children[this.debugAreaGroup.children.length - 1];
+      if (!child) continue;
+      this.debugAreaGroup.remove(child);
+      child.traverse((object) => {
+        if (object instanceof THREE.LineSegments) {
+          object.geometry.dispose();
+          const material = object.material;
+          if (Array.isArray(material)) material.forEach((entry) => entry.dispose());
+          else material.dispose();
+        }
+      });
+    }
+  }
+
   private renderFrame() {
     if (this.controls) this.controls.update();
+
+    this.updateDebugPanel();
 
     // Update head light position to follow camera
     const target = (this.controls && this.controls.target)
@@ -1146,6 +1746,9 @@ export class ThreePresenter {
    * Clear all models from the scene
    */
   private clearScene(): void {
+    this.invalidateGeodesicSurface();
+    this.lastAreaDebugInfo = null;
+    this.clearDebugArea();
     this.measurementManager.clear();
     Object.values(this.models).forEach(model => {
       this.scene.remove(model);
@@ -1554,6 +2157,7 @@ export class ThreePresenter {
         model.scale.set(scale[0], scale[1], scale[2]);
       }
     }
+    this.invalidateGeodesicSurface();
   }
 
   /**
@@ -1593,6 +2197,7 @@ export class ThreePresenter {
     const model = this.models[modelId];
     if (model) {
       model.visible = visible;
+      this.invalidateGeodesicSurface();
       console.log(`👁️ Model '${modelId}' visibility set to ${visible}`);
     } else {
       console.warn(`⚠️ Model '${modelId}' not found in loaded models. Available models:`, Object.keys(this.models));

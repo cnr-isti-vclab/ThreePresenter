@@ -36,6 +36,7 @@ import type {
   PointPickedCallback,
   AnnotationEditCallback,
   AnnotationSurfacePath,
+  AnnotationSurfacePathMode,
 } from '../types/AnnotationTypes';
 
 /**
@@ -96,7 +97,13 @@ export interface LineDraftResult {
 
 type SurfacePathProjector = (
   controlVertices: [number, number, number][],
-) => [number, number, number][];
+  visibilityVertices?: [number, number, number][],
+  options?: { requireVisibility?: boolean },
+) => [number, number, number][] | null;
+
+type AsyncSurfacePathProjector = (
+  controlVertices: [number, number, number][],
+) => Promise<[number, number, number][]>;
 
 type AreaFillProjector = (
   vertices: THREE.Vector3[],
@@ -538,44 +545,29 @@ export class AnnotationManager {
 
   /** Adapt the selected line to the visible model surface from the current camera. */
   adaptSelectedLineToCurrentView(): boolean {
-    if (!this.editingEnabled || this.selectedIds.size !== 1 || !this.surfacePathProjector) {
+    const input = this.getSelectedLineAdaptationInput();
+    if (!input || !this.surfacePathProjector) {
       return false;
     }
-
-    const annotationId = this.selectedIds.values().next().value as string | undefined;
-    const annotation = annotationId ? this.annotations.get(annotationId) : undefined;
-    if (!annotation || annotation.type !== 'line') {
-      return false;
-    }
-
-    const controlVertices = this.getLineControlVertices(annotation).map(
-      (point) => [...point] as [number, number, number],
+    const projectedVertices = this.projectSurfacePath(
+      input.controlVertices,
+      false,
+      input.visibilityVertices,
+      { requireVisibility: true },
     );
-    if (controlVertices.length < 2) {
+    return this.applySelectedLineAdaptation(input, projectedVertices, 'view-projected');
+  }
+
+  /** Adapt the selected line with an asynchronous mesh-surface projector. */
+  async adaptSelectedLineToSurface(projector: AsyncSurfacePathProjector): Promise<boolean> {
+    const input = this.getSelectedLineAdaptationInput();
+    if (!input) {
       return false;
     }
-
-    const projectedVertices = this.projectSurfacePath(controlVertices, false);
-    if (!projectedVertices || projectedVertices.length < 2) {
-      return false;
-    }
-
-    this.notifyAnnotationEditStart(annotation);
-    annotation.geometry = projectedVertices.map(
+    const projectedVertices = await projector(input.controlVertices.map(
       (point) => [...point] as [number, number, number],
-    );
-    annotation.surfacePath = {
-      mode: 'view-projected',
-      controlVertices,
-    };
-
-    const marker = this.markers.get(annotation.id);
-    if (marker) {
-      this.updateMarkerGeometry(marker, annotation);
-      this.updateMarkerAppearance(marker, true);
-    }
-    this.notifyAnnotationUpdated(annotation);
-    return true;
+    ));
+    return this.applySelectedLineAdaptation(input, projectedVertices, 'mesh-geodesic');
   }
 
   /** Commit a valid open or closed boundary; discard incomplete or degenerate drafts. */
@@ -1613,7 +1605,7 @@ export class AnnotationManager {
   }
 
   private getLineControlVertices(annotation: Annotation): [number, number, number][] {
-    if ((annotation.type === 'line' || annotation.type === 'area') && annotation.surfacePath?.mode === 'view-projected') {
+    if ((annotation.type === 'line' || annotation.type === 'area') && annotation.surfacePath) {
       return annotation.surfacePath.controlVertices;
     }
     return annotation.geometry as [number, number, number][];
@@ -1642,10 +1634,17 @@ export class AnnotationManager {
   }
 
   private regenerateSurfacePath(annotation: Annotation): void {
-    if ((annotation.type !== 'line' && annotation.type !== 'area') || annotation.surfacePath?.mode !== 'view-projected') {
+    if ((annotation.type !== 'line' && annotation.type !== 'area') || !annotation.surfacePath) {
       return;
     }
     const controlVertices = annotation.surfacePath.controlVertices;
+    if (annotation.surfacePath.mode === 'mesh-geodesic') {
+      annotation.geometry = controlVertices.map(
+        (point) => [...point] as [number, number, number],
+      );
+      annotation.surfacePath = undefined;
+      return;
+    }
     const projectedVertices = this.projectSurfacePath(controlVertices, annotation.type === 'area');
     annotation.geometry = (projectedVertices && projectedVertices.length >= 2
       ? projectedVertices
@@ -1654,9 +1653,89 @@ export class AnnotationManager {
   }
 
   /** Project the closing segment too, but store the first vertex only once. */
-  private projectSurfacePath(controls: [number, number, number][], closed: boolean) {
-    const projected = this.surfacePathProjector?.(closed ? [...controls, controls[0]] : controls);
+  private projectSurfacePath(
+    controls: [number, number, number][],
+    closed: boolean,
+    visibilityVertices = controls,
+    options?: { requireVisibility?: boolean },
+  ) {
+    const projected = this.surfacePathProjector?.(
+      closed ? [...controls, controls[0]] : controls,
+      options?.requireVisibility ? visibilityVertices : undefined,
+      options,
+    );
     return closed ? projected?.slice(0, -1) : projected;
+  }
+
+  private getSelectedLineAdaptationInput(): {
+    annotationId: string;
+    controlVertices: [number, number, number][];
+    visibilityVertices: [number, number, number][];
+  } | null {
+    if (!this.editingEnabled || this.selectedIds.size !== 1) {
+      return null;
+    }
+    const annotationId = this.selectedIds.values().next().value as string | undefined;
+    const annotation = annotationId ? this.annotations.get(annotationId) : undefined;
+    if (!annotationId || annotation?.type !== 'line') {
+      return null;
+    }
+    const controlVertices = this.getLineControlVertices(annotation).map(
+      (point) => [...point] as [number, number, number],
+    );
+    const visibilityVertices = (annotation.geometry as [number, number, number][]).map(
+      (point) => [...point] as [number, number, number],
+    );
+    return controlVertices.length >= 2
+      ? { annotationId, controlVertices, visibilityVertices }
+      : null;
+  }
+
+  private applySelectedLineAdaptation(
+    input: { annotationId: string; controlVertices: [number, number, number][] },
+    projectedVertices: [number, number, number][] | null | undefined,
+    mode: AnnotationSurfacePathMode,
+  ): boolean {
+    const annotation = this.annotations.get(input.annotationId);
+    if (
+      !this.editingEnabled
+      || this.selectedIds.size !== 1
+      || !this.selectedIds.has(input.annotationId)
+      || annotation?.type !== 'line'
+      || !projectedVertices
+      || projectedVertices.length < 2
+    ) {
+      return false;
+    }
+    const currentControls = this.getLineControlVertices(annotation);
+    if (!this.sameVertices(currentControls, input.controlVertices)) {
+      return false;
+    }
+
+    this.notifyAnnotationEditStart(annotation);
+    annotation.geometry = projectedVertices.map(
+      (point) => [...point] as [number, number, number],
+    );
+    annotation.surfacePath = {
+      mode,
+      controlVertices: input.controlVertices,
+    };
+    const marker = this.markers.get(annotation.id);
+    if (marker) {
+      this.updateMarkerGeometry(marker, annotation);
+      this.updateMarkerAppearance(marker, true);
+    }
+    this.notifyAnnotationUpdated(annotation);
+    return true;
+  }
+
+  private sameVertices(
+    left: [number, number, number][],
+    right: [number, number, number][],
+  ): boolean {
+    return left.length === right.length && left.every((point, index) =>
+      point.every((value, axis) => value === right[index][axis]),
+    );
   }
 
   private isValidArea(points: THREE.Vector3[]): boolean {

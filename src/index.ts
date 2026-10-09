@@ -53,6 +53,8 @@ export type {
   ModelDefinition,
   PresenterState,
   LoadingProgress,
+  GeodesicSurfaceInfo,
+  GeodesicDebugInfo,
   ThreePresenterConfig
 } from './ThreePresenter';
 

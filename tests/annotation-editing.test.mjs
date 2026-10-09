@@ -457,6 +457,56 @@ test('selected lines can be adapted to the current surface projector', () => {
   manager.dispose();
 });
 
+test('view adaptation is rejected when the projector cannot validate visibility', () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.setSurfacePathProjector(() => null);
+  manager.render([{
+    id: 'line-1',
+    label: 'Unadapted line',
+    type: 'line',
+    geometry: [[0, 0, 0], [2, 0, 0]],
+  }]);
+  manager.select(['line-1']);
+  const updates = [];
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+
+  assert.equal(manager.adaptSelectedLineToCurrentView(), false);
+  assert.equal(updates.length, 0);
+  manager.dispose();
+});
+
+test('selected lines can be adapted asynchronously to a mesh geodesic', async () => {
+  const manager = new AnnotationManager(new THREE.Scene());
+  manager.render([{
+    id: 'line-1',
+    label: 'Unadapted line',
+    type: 'line',
+    geometry: [[0, 0, 0], [2, 0, 0]],
+  }]);
+  manager.select(['line-1']);
+  const updates = [];
+  manager.onAnnotationUpdated((annotation) => updates.push(annotation));
+
+  assert.equal(await manager.adaptSelectedLineToSurface(async (controls) => [
+    [...controls[0]],
+    [1, 0, 1],
+    [...controls[1]],
+  ]), true);
+  assert.deepEqual(updates[0].geometry, [[0, 0, 0], [1, 0, 1], [2, 0, 0]]);
+  assert.deepEqual(updates[0].surfacePath, {
+    mode: 'mesh-geodesic',
+    controlVertices: [[0, 0, 0], [2, 0, 0]],
+  });
+
+  const endHandle = findLineHandle(manager, 1);
+  assert.equal(manager.beginAnnotationEditFromMarker(endHandle, 1), true);
+  manager.moveActiveAnnotation([3, 0, 0]);
+  manager.endAnnotationEdit();
+  assert.deepEqual(updates.at(-1).geometry, [[0, 0, 0], [3, 0, 0]]);
+  assert.equal(updates.at(-1).surfacePath, undefined);
+  manager.dispose();
+});
+
 test('occluded line has a contrasting dashed pass restricted to greater depth', () => {
   const manager = createSelectedLineManager();
   const occludedUnderlay = findLineRole(manager, 'line-occluded-underlay');

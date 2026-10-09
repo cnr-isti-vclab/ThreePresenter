@@ -30,9 +30,14 @@ export default defineConfig({
     },
 
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      entry: {
+        index: resolve(__dirname, 'src/index.ts'),
+        geometry: resolve(__dirname, 'src/geometry/index.ts')
+      },
       formats: ['es'],
-      fileName: () => `three-presenter.js`
+      fileName: (_format, entryName) => entryName === 'index'
+        ? 'three-presenter.js'
+        : `${entryName}.js`
     },
 
     rollupOptions: {

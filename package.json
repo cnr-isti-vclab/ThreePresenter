@@ -11,18 +11,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/three-presenter.js"
+    },
+    "./geometry": {
+      "types": "./dist/geometry.d.ts",
+      "import": "./dist/geometry.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "wasm/THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "dev": "node scripts/dev-unified.js",
+    "build:geometry-wasm": "sh scripts/build-geometry-wasm.sh",
+    "benchmark:geometry-wasm": "node scripts/benchmark-geometry-wasm.mjs",
     "build": "vite build && node scripts/generate-examples.js && mkdir -p docs/dist && cp -r dist/* docs/dist/",
     "build:docs": "npm run build",
     "serve:docs": "http-server docs -p 8080",
     "deploy": "npm run build:docs && typedoc",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "test:geometry-wasm": "node --test tests/geometry-wasm.test.mjs",
     "smoke:assets": "node scripts/smoke-assets.js",
     "smoke": "npm run build && npm run smoke:assets"
   },

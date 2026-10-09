@@ -26,8 +26,10 @@ export type AnnotationGeometry =
   | [number, number, number][]; // Line or Area
 
 /** Sparse controls retained for a dense line or area boundary projected onto the visible surface. */
+export type AnnotationSurfacePathMode = 'view-projected' | 'mesh-geodesic';
+
 export interface AnnotationSurfacePath {
-  mode: 'view-projected';
+  mode: AnnotationSurfacePathMode;
   controlVertices: [number, number, number][];
 }
 
