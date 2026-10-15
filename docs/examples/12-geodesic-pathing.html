@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Example 12 - Geodesic Surface Path</title>
+  <style>
+    body { margin: 0; font-family: system-ui; }
+    #viewer { width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      max-width: 360px;
+      background: rgba(255, 255, 255, 0.94);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    button { padding: 6px 10px; cursor: pointer; }
+    #status { margin-top: 8px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="ui">
+    <button id="draw" type="button">Draw line</button>
+    <button id="adapt" type="button">Adapt selected line to geodesic</button>
+    <div id="status">Draw a line with at least two points, finish it, then select it and adapt it. Enable diagnostics using the bug button.</div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
+
+    const presenter = new ThreePresenter({
+      mount: 'viewer',
+      fileUrlResolver: new StaticBaseUrlResolver('../assets'),
+      debug: true
+    });
+    const annotations = [];
+    const draw = document.getElementById('draw');
+    const status = document.getElementById('status');
+
+    draw.addEventListener('click', () => {
+      const active = presenter.getAnnotationCreationMode() === 'line';
+      presenter.setAnnotationCreationMode(active ? null : 'line');
+    });
+
+    presenter.onAnnotationCreationModeChange = (mode) => {
+      draw.classList.toggle('active', mode === 'line');
+      draw.textContent = mode === 'line' ? 'Finish line' : 'Draw line';
+    };
+
+    presenter.onAnnotationGeometryCreated = (type, geometry, surfacePath) => {
+      annotations.push({
+        id: `line-${annotations.length + 1}`,
+        label: `Line ${annotations.length + 1}`,
+        type,
+        geometry,
+        surfacePath
+      });
+      presenter.getAnnotationManager().render(annotations);
+      status.textContent = 'Line created. Select its line, then compute the geodesic path.';
+    };
+
+    document.getElementById('adapt').addEventListener('click', async () => {
+      status.textContent = 'Preparing the mesh and computing the path...';
+      try {
+        const adapted = await presenter.adaptSelectedLineToGeodesic();
+        const info = presenter.getLastGeodesicDebugInfo();
+        status.textContent = adapted && info
+          ? `Path: ${info.outputPointCount} points, ${info.pathLength.toFixed(3)} units. Mesh: ${info.vertexCount} vertices / ${info.faceCount} faces. Preparation ${info.preparationMs.toFixed(1)} ms; path ${info.pathMs.toFixed(1)} ms.`
+          : 'Select a line first, then compute its geodesic path.';
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
+
+    await presenter.loadScene({
+      models: [{ id: 'model', file: 'venus.glb' }],
+      environment: { showGround: true }
+    });
+  </script>
+</body>
+</html>

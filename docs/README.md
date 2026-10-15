@@ -2,6 +2,8 @@
 
 This folder contains the GitHub Pages demo site for ThreePresenter.
 
+Design guides: [Architecture and philosophy](ARCHITECTURE.md) and [Line and area annotations](ANNOTATIONS.md).
+
 ## Structure
 
 ```

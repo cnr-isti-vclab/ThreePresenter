@@ -11,6 +11,12 @@ Guidance for coding agents working in this repository.
 - Any new feature should be documented by an example in `docs/examples/` and added to the examples catalog.
 - Examples should be minimal, as short as possible, self-contained code that demonstrates the feature. They should not be full applications, but rather focused snippets that can be easily read and understood.
 
+## Design documentation
+
+- Read [Architecture and philosophy](docs/ARCHITECTURE.md) before changing component responsibilities, data ownership, or subsystem integration.
+- Read [Line and area annotations](docs/ANNOTATIONS.md) before changing annotation creation, editing, surface adaptation, or area rendering.
+- Keep these guides aligned with implementation changes. They describe current behavior and limitations; verify against the source when they disagree, and update the relevant guide.
+
 ## Dev environment tips
 
 - Use Node 20+ and npm.

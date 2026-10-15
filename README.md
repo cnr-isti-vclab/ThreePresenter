@@ -10,6 +10,8 @@ OCRA is developed within the frame of the [ECHOES project](https://www.echoes-ec
 
 [API Documentation](https://cnr-isti-vclab.github.io/ThreePresenter/api/) • [Live Examples](https://cnr-isti-vclab.github.io/ThreePresenter/)
 
+Design documentation: [Architecture and philosophy](docs/ARCHITECTURE.md) and [Line and area annotations](docs/ANNOTATIONS.md).
+
 ## Quick Start
 
 ```bash

@@ -29,9 +29,13 @@
   <div id="ui">
     <button id="line" type="button">Draw line</button>
     <button id="area" type="button">Draw area boundary</button>
+    <button id="adapt-view" type="button">Adapt selected line to view</button>
+    <button id="adapt-area" type="button">Adapt selected area to view</button>
+    <button id="visibility" type="button">Hide annotations</button>
+    <button id="debug" type="button" aria-pressed="false">Enable diagnostics</button>
     <label><input id="editing" type="checkbox" checked> Edit vertices</label>
     <label><input id="surface-follow" type="checkbox"> Surface follow</label>
-    <div id="status">Click to add points; double-click or Enter to finish; Escape to cancel. Areas show an experimental mesh-sampled fill and clipping overlay. Stop drawing to edit.</div>
+    <div id="status">Click to add points; double-click or Enter to finish; Escape to cancel. To adapt a line or area, select it with every control point visible in the current view. Areas show a mesh-sampled fill and clipping overlay.</div>
   </div>
 
   <script type="importmap">
@@ -44,7 +48,7 @@
   </script>
 
   <script type="module">
-    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js';
+    import { ThreePresenter, StaticBaseUrlResolver } from '../dist/three-presenter.js?v=control-point-visibility-2';
 
     const presenter = new ThreePresenter({
       mount: 'viewer',
@@ -55,6 +59,47 @@
     const editingCheckbox = document.getElementById('editing');
     const surfaceFollowCheckbox = document.getElementById('surface-follow');
     const status = document.getElementById('status');
+    const visibilityButton = document.getElementById('visibility');
+    const debugButton = document.getElementById('debug');
+    let annotationsVisible = true;
+
+    visibilityButton.addEventListener('click', () => {
+      annotationsVisible = !annotationsVisible;
+      presenter.setAnnotationsVisible(annotationsVisible);
+      visibilityButton.textContent = annotationsVisible ? 'Hide annotations' : 'Show annotations';
+    });
+
+    debugButton.addEventListener('click', () => {
+      const enabled = !presenter.getDebugEnabled();
+      presenter.setDebugEnabled(enabled);
+      debugButton.textContent = enabled ? 'Disable diagnostics' : 'Enable diagnostics';
+      debugButton.setAttribute('aria-pressed', String(enabled));
+    });
+
+    function adaptSelected(type) {
+      const annotationManager = presenter.getAnnotationManager();
+      const selectedIds = annotationManager.getSelected();
+      const selectedAnnotation = annotations.find(({ id }) => id === selectedIds[0]);
+      const isArea = type === 'area';
+      const adapted = isArea
+        ? presenter.adaptSelectedAreaToCurrentView()
+        : presenter.adaptSelectedLineToCurrentView();
+      if (adapted) {
+        status.textContent = `Selected ${type} adapted to the visible model surface from this view.`;
+      } else if (selectedIds.length !== 1 || selectedAnnotation?.type !== type) {
+        status.textContent = `Select one ${type} first. Then adapt it to the current view.`;
+      } else if (!presenter.getAnnotationEditingEnabled()) {
+        status.textContent = `Enable Edit vertices before adapting a ${type}.`;
+      } else {
+        const failure = presenter.getLastViewAdaptationFailure?.();
+        status.textContent = failure
+          ? `Adaptation skipped: ${failure} Check that the boundary is visible from this view, then retry.`
+          : `Adaptation could not be applied to the selected ${type}. Reload the example to update its viewer bundle, then retry.`;
+      }
+    }
+
+    document.getElementById('adapt-view').addEventListener('click', () => adaptSelected('line'));
+    document.getElementById('adapt-area').addEventListener('click', () => adaptSelected('area'));
 
     drawingButtons.forEach((button) => button.addEventListener('click', () => {
       const active = presenter.getAnnotationCreationMode() === button.id;

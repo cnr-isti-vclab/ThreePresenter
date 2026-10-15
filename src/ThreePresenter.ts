@@ -160,6 +160,7 @@ export class ThreePresenter {
     outputPointCount: number;
     segmentSampleCounts: number[];
   } | null = null;
+  private lastViewAdaptationFailure: string | null = null;
   private lastAreaDebugInfo: {
     mode: 'surface' | 'projected';
     boundaryPointCount: number;
@@ -629,6 +630,16 @@ export class ThreePresenter {
     return this.annotationManager.adaptSelectedLineToCurrentView();
   }
 
+  /** Adapt the selected area boundary, including its closing segment, to the current view. */
+  adaptSelectedAreaToCurrentView(): boolean {
+    return this.annotationManager.adaptSelectedAreaToCurrentView();
+  }
+
+  /** Explain why the most recent view adaptation did not complete, if applicable. */
+  getLastViewAdaptationFailure(): string | null {
+    return this.lastViewAdaptationFailure;
+  }
+
   /** Adapt the selected line to an approximate mesh geodesic. */
   async adaptSelectedLineToGeodesic(): Promise<boolean> {
     return this.annotationManager.adaptSelectedLineToSurface((controlVertices) =>
@@ -780,7 +791,9 @@ export class ThreePresenter {
     controlVertices: [number, number, number][],
     visibilityVertices?: [number, number, number][],
   ): [number, number, number][] | null {
+    this.lastViewAdaptationFailure = null;
     if (controlVertices.length < 2) {
+      this.lastViewAdaptationFailure = 'The boundary needs at least two control points.';
       return controlVertices.map((point) => [...point] as [number, number, number]);
     }
 
@@ -789,16 +802,18 @@ export class ThreePresenter {
     this.camera.updateMatrixWorld();
     const meshes = this.getVisibleModelMeshes();
     if (meshes.length === 0) {
+      this.lastViewAdaptationFailure = 'No visible model surface is available to project onto.';
       this.clearDebugPath();
       this.updateDebugPanel(true);
       return null;
     }
 
     if (visibilityVertices) {
-      const invisibleIndex = this.findInvisiblePolylineVertex(visibilityVertices, meshes);
-      if (invisibleIndex !== -1) {
+      const visibilityFailure = this.findInvisiblePolylineVertex(visibilityVertices, meshes);
+      if (visibilityFailure) {
+        this.lastViewAdaptationFailure = visibilityFailure.message;
         console.warn(
-          `⚠️ View adaptation skipped: polyline point ${invisibleIndex + 1} is outside the current view or occluded`,
+          `⚠️ View adaptation skipped: ${visibilityFailure.message}`,
         );
         this.clearDebugPath();
         this.updateDebugPanel(true);
@@ -863,7 +878,7 @@ export class ThreePresenter {
   private findInvisiblePolylineVertex(
     vertices: [number, number, number][],
     meshes: THREE.Mesh[],
-  ): number {
+  ): { message: string } | null {
     for (let index = 0; index < vertices.length; index += 1) {
       const point = new THREE.Vector3(...vertices[index]);
       const projected = point.clone().project(this.camera);
@@ -875,7 +890,7 @@ export class ThreePresenter {
         projected.y < -1 || projected.y > 1 ||
         projected.z < -1 || projected.z > 1
       ) {
-        return index;
+        return { message: `control point ${index + 1} is outside the camera view.` };
       }
 
       this.surfacePathRaycaster.setFromCamera(
@@ -886,10 +901,13 @@ export class ThreePresenter {
       const hit = this.surfacePathRaycaster.intersectObjects(meshes, false)[0];
       const tolerance = Math.max(1e-5, targetDistance * 1e-4);
       if (hit && hit.distance < targetDistance - tolerance) {
-        return index;
+        const gap = targetDistance - hit.distance;
+        return {
+          message: `control point ${index + 1} is behind the visible surface by about ${gap.toPrecision(3)} world units.`,
+        };
       }
     }
-    return -1;
+    return null;
   }
 
   private getVisibleModelMeshes(): THREE.Mesh[] {
