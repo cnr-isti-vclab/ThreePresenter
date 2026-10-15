@@ -1,16 +1,16 @@
-export interface OcraGeometryModule {
+export interface ThreePresenterGeometryModule {
   HEAPF64: Float64Array;
   HEAPU32: Uint32Array;
   _malloc(size: number): number;
   _free(pointer: number): void;
-  _ocra_load_mesh(
+  _threepresenter_load_mesh(
     positions: number,
     vertexCount: number,
     indices: number,
     faceCount: number,
   ): number;
-  _ocra_clear_mesh(): void;
-  _ocra_compute_surface_path(
+  _threepresenter_clear_mesh(): void;
+  _threepresenter_compute_surface_path(
     sourceFace: number,
     sourceX: number,
     sourceY: number,
@@ -20,7 +20,7 @@ export interface OcraGeometryModule {
     targetY: number,
     targetZ: number,
   ): number;
-  _ocra_compute_surface_path_between_points(
+  _threepresenter_compute_surface_path_between_points(
     sourceX: number,
     sourceY: number,
     sourceZ: number,
@@ -28,16 +28,16 @@ export interface OcraGeometryModule {
     targetY: number,
     targetZ: number,
   ): number;
-  _ocra_path_data(): number;
-  _ocra_path_point_count(): number;
-  _ocra_path_length(): number;
+  _threepresenter_path_data(): number;
+  _threepresenter_path_point_count(): number;
+  _threepresenter_path_length(): number;
 }
 
-export interface OcraGeometryModuleOptions {
+export interface ThreePresenterGeometryModuleOptions {
   locateFile?: (path: string) => string;
   wasmBinary?: Uint8Array;
 }
 
-export default function createOcraGeometryModule(
-  options?: OcraGeometryModuleOptions,
-): Promise<OcraGeometryModule>;
+export default function createThreePresenterGeometryModule(
+  options?: ThreePresenterGeometryModuleOptions,
+): Promise<ThreePresenterGeometryModule>;

@@ -11,11 +11,11 @@ if command -v emcmake >/dev/null 2>&1; then
     set -- "$@" "-DFETCHCONTENT_SOURCE_DIR_VCGLIB=$VCGLIB_SOURCE_DIR"
   fi
   emcmake cmake "$@"
-  cmake --build build --target ocra-geometry --parallel
+  cmake --build build --target threepresenter-geometry --parallel
   exit 0
 fi
 
-emsdk_dir="${EMSDK_DIR:-/private/tmp/ocra-emsdk}"
+emsdk_dir="${EMSDK_DIR:-/private/tmp/threepresenter-emsdk}"
 if [ -x "$emsdk_dir/upstream/emscripten/emcmake" ]; then
   cd "$project_dir/wasm"
   set -- -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -24,7 +24,7 @@ if [ -x "$emsdk_dir/upstream/emscripten/emcmake" ]; then
   fi
   PATH="$emsdk_dir/upstream/emscripten:$PATH" \
     "$emsdk_dir/upstream/emscripten/emcmake" cmake "$@"
-  cmake --build build --target ocra-geometry --parallel
+  cmake --build build --target threepresenter-geometry --parallel
   exit 0
 fi
 
@@ -33,4 +33,4 @@ docker run --rm \
   --volume "$project_dir:/work" \
   --workdir /work/wasm \
   "$image" \
-  sh -lc 'emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target ocra-geometry --parallel'
+  sh -lc 'emcmake cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --target threepresenter-geometry --parallel'

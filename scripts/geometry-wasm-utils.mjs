@@ -1,13 +1,13 @@
 import { readFile } from 'node:fs/promises';
 
-import createOcraGeometryModule from '../src/geometry/generated/ocra-geometry.js';
+import createThreePresenterGeometryModule from '../src/geometry/generated/threepresenter-geometry.js';
 
 export async function createGeometryCore() {
   const wasmBinary = await readFile(new URL(
-    '../src/geometry/generated/ocra-geometry.wasm',
+    '../src/geometry/generated/threepresenter-geometry.wasm',
     import.meta.url,
   ));
-  return createOcraGeometryModule({ wasmBinary });
+  return createThreePresenterGeometryModule({ wasmBinary });
 }
 
 function copyToHeap(module, values) {
@@ -24,7 +24,7 @@ export function loadMesh(module, positions, indices) {
   const vertexPointer = copyToHeap(module, vertices);
   const facePointer = copyToHeap(module, faces);
   try {
-    return module._ocra_load_mesh(
+    return module._threepresenter_load_mesh(
       vertexPointer,
       vertices.length / 3,
       facePointer,
@@ -37,23 +37,23 @@ export function loadMesh(module, positions, indices) {
 }
 
 export function surfacePath(module, sourceFace, source, targetFace, target) {
-  const result = module._ocra_compute_surface_path(sourceFace, ...source, targetFace, ...target);
+  const result = module._threepresenter_compute_surface_path(sourceFace, ...source, targetFace, ...target);
   return readPath(module, result);
 }
 
 export function surfacePathBetweenPoints(module, source, target) {
-  const result = module._ocra_compute_surface_path_between_points(...source, ...target);
+  const result = module._threepresenter_compute_surface_path_between_points(...source, ...target);
   return readPath(module, result);
 }
 
 function readPath(module, result) {
   if (result !== 0) return { result, length: 0, points: new Float64Array() };
 
-  const pointCount = module._ocra_path_point_count();
-  const begin = module._ocra_path_data() / Float64Array.BYTES_PER_ELEMENT;
+  const pointCount = module._threepresenter_path_point_count();
+  const begin = module._threepresenter_path_data() / Float64Array.BYTES_PER_ELEMENT;
   return {
     result,
-    length: module._ocra_path_length(),
+    length: module._threepresenter_path_length(),
     points: module.HEAPF64.slice(begin, begin + pointCount * 3),
   };
 }

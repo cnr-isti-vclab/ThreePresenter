@@ -1,15 +1,15 @@
 /// <reference lib="webworker" />
 
-import createOcraGeometryModule from './generated/ocra-geometry.js';
-import type { OcraGeometryModule } from './generated/ocra-geometry.js';
+import createThreePresenterGeometryModule from './generated/threepresenter-geometry.js';
+import type { ThreePresenterGeometryModule } from './generated/threepresenter-geometry.js';
 import type {
   GeometryWorkerRequest,
   GeometryWorkerResponse,
 } from './GeometryWorkerProtocol';
 
-const wasmUrl = new URL('./generated/ocra-geometry.wasm', import.meta.url).href;
+const wasmUrl = new URL('./generated/threepresenter-geometry.wasm', import.meta.url).href;
 const modulePromise = loadWasmBinary(wasmUrl)
-  .then((wasmBinary) => createOcraGeometryModule({ wasmBinary }));
+  .then((wasmBinary) => createThreePresenterGeometryModule({ wasmBinary }));
 let activeMeshId: string | null = null;
 
 async function loadWasmBinary(url: string): Promise<Uint8Array> {
@@ -34,7 +34,7 @@ function checkResult(code: number, operation: string): void {
 }
 
 function withHeapArray<T extends Float64Array | Uint32Array>(
-  module: OcraGeometryModule,
+  module: ThreePresenterGeometryModule,
   value: T,
   callback: (pointer: number) => void,
 ): void {
@@ -60,7 +60,7 @@ async function handleRequest(request: GeometryWorkerRequest): Promise<GeometryWo
     let result = -1;
     withHeapArray(module, request.positions, (positionPointer) => {
       withHeapArray(module, request.indices, (indexPointer) => {
-        result = module._ocra_load_mesh(
+        result = module._threepresenter_load_mesh(
           positionPointer,
           request.positions.length / 3,
           indexPointer,
@@ -83,19 +83,19 @@ async function handleRequest(request: GeometryWorkerRequest): Promise<GeometryWo
     throw new Error(`Mesh ${request.meshId} is not registered in the geometry worker`);
   }
   const result = request.type === 'surfacePath'
-    ? module._ocra_compute_surface_path(
+    ? module._threepresenter_compute_surface_path(
       request.source.faceIndex,
       ...request.source.position,
       request.target.faceIndex,
       ...request.target.position,
     )
-    : module._ocra_compute_surface_path_between_points(
+    : module._threepresenter_compute_surface_path_between_points(
       ...request.source,
       ...request.target,
     );
   checkResult(result, 'Surface path');
-  const pointCount = module._ocra_path_point_count();
-  const pointer = module._ocra_path_data();
+  const pointCount = module._threepresenter_path_point_count();
+  const pointer = module._threepresenter_path_data();
   const points = new Float64Array(pointCount * 3);
   points.set(module.HEAPF64.subarray(pointer / 8, pointer / 8 + points.length));
   return {
@@ -103,7 +103,7 @@ async function handleRequest(request: GeometryWorkerRequest): Promise<GeometryWo
     ok: true,
     type: 'surfacePath',
     points,
-    length: module._ocra_path_length(),
+    length: module._threepresenter_path_length(),
   };
 }
 

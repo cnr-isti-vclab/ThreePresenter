@@ -153,7 +153,7 @@ bool closest_surface_point(double x, double y, double z, Face*& face, vcg::Point
 
 extern "C" {
 
-int ocra_load_mesh(
+int threepresenter_load_mesh(
   const double* positions,
   std::size_t vertex_count,
   const std::uint32_t* indices,
@@ -197,12 +197,12 @@ int ocra_load_mesh(
   return 0;
 }
 
-void ocra_clear_mesh() {
+void threepresenter_clear_mesh() {
   mesh.Clear();
   clear_path();
 }
 
-int ocra_compute_surface_path(
+int threepresenter_compute_surface_path(
   std::uint32_t source_face,
   double source_x,
   double source_y,
@@ -228,7 +228,7 @@ int ocra_compute_surface_path(
   );
 }
 
-int ocra_compute_surface_path_between_points(
+int threepresenter_compute_surface_path_between_points(
   double source_x,
   double source_y,
   double source_z,
@@ -252,15 +252,15 @@ int ocra_compute_surface_path_between_points(
   return compute_surface_path(*source_face, source, *target_face, target);
 }
 
-const double* ocra_path_data() {
+const double* threepresenter_path_data() {
   return path_coordinates.empty() ? nullptr : path_coordinates.data();
 }
 
-std::size_t ocra_path_point_count() {
+std::size_t threepresenter_path_point_count() {
   return path_coordinates.size() / 3;
 }
 
-double ocra_path_length() {
+double threepresenter_path_length() {
   return path_length;
 }
 
